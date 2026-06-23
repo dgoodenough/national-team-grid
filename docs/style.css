@@ -1,0 +1,111 @@
+:root {
+  --bg: #0e1016;
+  --panel: #161a24;
+  --panel-2: #1d2330;
+  --ink: #e7eaf0;
+  --ink-dim: #9aa3b2;
+  --line: #2a3142;
+  --accent: #4dd0a7;
+  --never: #11131a;       /* never-played cell */
+  --never-hi: #ff3b6b;    /* never-played when highlighted */
+  --diag: #39404f;        /* same-team diagonal */
+  font-size: 14px;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  overflow: hidden;
+}
+a { color: var(--accent); }
+
+#app { display: flex; height: 100vh; width: 100vw; }
+
+/* ---- panel ---- */
+#panel {
+  width: 300px; min-width: 300px; height: 100%;
+  background: var(--panel);
+  border-right: 1px solid var(--line);
+  overflow-y: auto;
+  padding: 16px 16px 24px;
+}
+#panel header h1 { margin: 0; font-size: 1.25rem; letter-spacing: .2px; }
+#panel header .sub { margin: 4px 0 0; color: var(--ink-dim); font-size: .82rem; }
+#panel header .sub em { color: var(--never-hi); font-style: normal; }
+
+.ctl { margin-top: 18px; }
+.row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.lbl { font-size: .72rem; text-transform: uppercase; letter-spacing: .8px; color: var(--ink-dim); flex: 1; }
+.hint { color: var(--ink-dim); font-size: .72rem; }
+
+/* segmented control */
+.seg { display: flex; background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.seg button { flex: 1; padding: 8px; background: none; border: none; color: var(--ink-dim); cursor: pointer; font-size: .9rem; }
+.seg button.active { background: var(--accent); color: #06231a; font-weight: 600; }
+
+button.mini {
+  background: var(--panel-2); border: 1px solid var(--line); color: var(--ink-dim);
+  border-radius: 6px; padding: 2px 8px; font-size: .72rem; cursor: pointer;
+}
+button.mini:hover { color: var(--ink); }
+button.wide {
+  width: 100%; padding: 9px; background: var(--panel-2); border: 1px solid var(--line);
+  color: var(--ink); border-radius: 8px; cursor: pointer; font-size: .85rem;
+}
+button.wide:hover { border-color: var(--accent); }
+
+.check { display: flex; align-items: center; gap: 8px; font-size: .85rem; margin: 8px 0; cursor: pointer; }
+.check input { accent-color: var(--accent); }
+
+.confed-list label { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: .85rem; cursor: pointer; }
+.confed-list .dot { width: 11px; height: 11px; border-radius: 3px; flex: none; }
+.confed-list .cnt { margin-left: auto; color: var(--ink-dim); font-size: .72rem; }
+
+#team-search {
+  width: 100%; padding: 7px 9px; background: var(--panel-2); border: 1px solid var(--line);
+  color: var(--ink); border-radius: 7px; font-size: .85rem; margin-bottom: 6px;
+}
+.team-list { max-height: 190px; overflow-y: auto; border: 1px solid var(--line); border-radius: 7px; padding: 4px 8px; background: var(--panel-2); }
+.team-list label { display: flex; align-items: center; gap: 7px; padding: 2px 0; font-size: .8rem; cursor: pointer; }
+.team-list .rk { margin-left: auto; color: var(--ink-dim); font-size: .68rem; }
+
+.legend { margin-top: 18px; }
+#legend-canvas { width: 100%; height: 14px; border-radius: 4px; display: block; }
+.legend-keys { display: flex; gap: 16px; margin-top: 8px; font-size: .74rem; color: var(--ink-dim); }
+.legend-keys .sw { display: inline-block; width: 11px; height: 11px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; }
+#sw-never { background: var(--never); border: 1px solid var(--line); }
+#sw-diag { background: var(--diag); }
+
+.stats { margin-top: 18px; font-size: .8rem; line-height: 1.5; }
+.stats b { color: var(--accent); }
+.stats .big { font-size: 1.4rem; font-weight: 700; color: var(--ink); display: block; }
+
+#panel footer { margin-top: 20px; padding-top: 14px; border-top: 1px solid var(--line); }
+#panel footer p { margin: 0 0 6px; font-size: .7rem; color: var(--ink-dim); line-height: 1.5; }
+
+/* ---- stage ---- */
+#stage { position: relative; flex: 1; height: 100%; overflow: hidden; }
+#grid { display: block; width: 100%; height: 100%; cursor: grab; }
+#grid.panning { cursor: grabbing; }
+
+#tooltip {
+  position: absolute; pointer-events: none; z-index: 5;
+  background: rgba(12,14,20,.96); border: 1px solid var(--line); border-radius: 8px;
+  padding: 8px 10px; font-size: .8rem; max-width: 240px; box-shadow: 0 6px 24px rgba(0,0,0,.5);
+}
+#tooltip .vs { font-weight: 600; margin-bottom: 3px; }
+#tooltip .n { color: var(--accent); font-weight: 700; }
+#tooltip .dim { color: var(--ink-dim); font-size: .74rem; }
+
+#loading {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  color: var(--ink-dim); background: var(--bg); font-size: .95rem;
+}
+
+@media (max-width: 720px) {
+  #app { flex-direction: column; }
+  #panel { width: 100%; min-width: 0; height: auto; max-height: 45vh; border-right: none; border-bottom: 1px solid var(--line); }
+}

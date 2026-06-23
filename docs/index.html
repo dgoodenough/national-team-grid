@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>National Team Matchup Grid</title>
+<meta name="description" content="A Scorigami-style grid of every international football matchup — which national teams have and haven't played each other." />
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<div id="app">
+  <aside id="panel">
+    <header>
+      <h1>Matchup Grid</h1>
+      <p class="sub">Which national teams have <em>never</em> played each other.</p>
+    </header>
+
+    <section class="ctl">
+      <div class="seg" id="gender" role="tablist" aria-label="Dataset">
+        <button data-gender="men" class="active">Men's</button>
+        <button data-gender="women">Women's</button>
+      </div>
+    </section>
+
+    <section class="ctl">
+      <div class="row"><span class="lbl">Confederations</span>
+        <button class="mini" id="confed-all">all</button>
+        <button class="mini" id="confed-none">none</button>
+      </div>
+      <div id="confed-list" class="confed-list"></div>
+    </section>
+
+    <section class="ctl">
+      <label class="check"><input type="checkbox" id="opt-highlight" /> Highlight never-played</label>
+      <label class="check"><input type="checkbox" id="opt-defunct" /> Include defunct teams <span class="hint">(advanced)</span></label>
+    </section>
+
+    <section class="ctl">
+      <div class="row"><span class="lbl">Manual selection</span>
+        <button class="mini" id="manual-clear">clear</button>
+      </div>
+      <input type="search" id="team-search" placeholder="Filter teams…" autocomplete="off" />
+      <div id="team-list" class="team-list"></div>
+      <p class="hint">Tick teams to build a custom sub-grid (overrides confederation filter).</p>
+    </section>
+
+    <section class="ctl">
+      <button class="wide" id="reset-view">Reset view</button>
+    </section>
+
+    <section class="legend">
+      <div class="row"><span class="lbl">Meetings</span><span id="legend-max" class="hint"></span></div>
+      <canvas id="legend-canvas" width="220" height="14"></canvas>
+      <div class="legend-keys">
+        <span><i class="sw" id="sw-never"></i> never played</span>
+        <span><i class="sw" id="sw-diag"></i> same team</span>
+      </div>
+    </section>
+
+    <section id="stats" class="stats"></section>
+
+    <footer>
+      <p id="meta"></p>
+      <p>Data: <a href="https://github.com/martj42/international_results" target="_blank" rel="noopener">martj42</a> ·
+         ranking <a href="https://github.com/cnc8/fifa-world-ranking" target="_blank" rel="noopener">cnc8</a>.
+         Inspired by <a href="https://nflscorigami.com" target="_blank" rel="noopener">Scorigami</a>.</p>
+    </footer>
+  </aside>
+
+  <main id="stage">
+    <canvas id="grid"></canvas>
+    <div id="tooltip" hidden></div>
+    <div id="loading">Loading match history…</div>
+  </main>
+</div>
+<script src="app.js"></script>
+</body>
+</html>
