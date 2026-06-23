@@ -79,20 +79,47 @@ button.wide:hover { border-color: var(--accent); }
 #sw-never { background: var(--never); border: 1px solid var(--line); }
 #sw-diag { background: var(--diag); }
 
-.stats { margin-top: 18px; font-size: .8rem; line-height: 1.5; }
-.stats b { color: var(--accent); }
-.stats .big { font-size: 1.4rem; font-weight: 700; color: var(--ink); display: block; }
+#sort {
+  width: 100%; padding: 7px 9px; background: var(--panel-2); border: 1px solid var(--line);
+  color: var(--ink); border-radius: 7px; font-size: .85rem; cursor: pointer;
+}
 
 #panel footer { margin-top: 20px; padding-top: 14px; border-top: 1px solid var(--line); }
 #panel footer p { margin: 0 0 6px; font-size: .7rem; color: var(--ink-dim); line-height: 1.5; }
 
 /* ---- stage ---- */
-#stage { position: relative; flex: 1; height: 100%; overflow: hidden; }
+#stage { flex: 1; height: 100%; min-width: 0; display: flex; flex-direction: column; }
+
+#headline {
+  flex: none; padding: 14px 22px; border-bottom: 1px solid var(--line);
+  background: linear-gradient(180deg, #141925, var(--bg));
+  display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap;
+}
+#headline .big {
+  font-size: 2.5rem; font-weight: 800; line-height: 1; color: var(--never-hi);
+  letter-spacing: -.5px; font-variant-numeric: tabular-nums;
+}
+#headline .rest { font-size: .95rem; color: var(--ink); max-width: 60ch; }
+#headline .rest b { color: var(--accent); }
+#headline.hl .big { color: var(--never-hi); }
+
+#canvas-wrap { position: relative; flex: 1; min-height: 0; overflow: hidden; }
 #grid { display: block; width: 100%; height: 100%; cursor: grab; }
 #grid.panning { cursor: grabbing; }
 
+#zoom-ctl {
+  position: absolute; right: 14px; bottom: 14px; z-index: 6; display: flex; gap: 4px;
+}
+#zoom-ctl button {
+  background: rgba(22,26,36,.92); border: 1px solid var(--line); color: var(--ink);
+  width: 34px; height: 34px; border-radius: 8px; cursor: pointer; font-size: 1rem;
+  display: flex; align-items: center; justify-content: center;
+}
+#zoom-ctl button#zoom-fit { width: auto; padding: 0 12px; font-size: .82rem; }
+#zoom-ctl button:hover { border-color: var(--accent); color: var(--accent); }
+
 #tooltip {
-  position: absolute; pointer-events: none; z-index: 5;
+  position: absolute; pointer-events: none; z-index: 7;
   background: rgba(12,14,20,.96); border: 1px solid var(--line); border-radius: 8px;
   padding: 8px 10px; font-size: .8rem; max-width: 240px; box-shadow: 0 6px 24px rgba(0,0,0,.5);
 }
@@ -108,4 +135,6 @@ button.wide:hover { border-color: var(--accent); }
 @media (max-width: 720px) {
   #app { flex-direction: column; }
   #panel { width: 100%; min-width: 0; height: auto; max-height: 45vh; border-right: none; border-bottom: 1px solid var(--line); }
+  #headline .big { font-size: 1.8rem; }
+  #headline .rest { font-size: .82rem; }
 }

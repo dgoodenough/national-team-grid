@@ -23,6 +23,15 @@
     </section>
 
     <section class="ctl">
+      <div class="row"><span class="lbl">Sort</span></div>
+      <select id="sort">
+        <option value="confed">Confederation, then FIFA rank</option>
+        <option value="rank">FIFA rank — global, down the line</option>
+        <option value="alpha">Alphabetical</option>
+      </select>
+    </section>
+
+    <section class="ctl">
       <div class="row"><span class="lbl">Confederations</span>
         <button class="mini" id="confed-all">all</button>
         <button class="mini" id="confed-none">none</button>
@@ -44,10 +53,6 @@
       <p class="hint">Tick teams to build a custom sub-grid (overrides confederation filter).</p>
     </section>
 
-    <section class="ctl">
-      <button class="wide" id="reset-view">Reset view</button>
-    </section>
-
     <section class="legend">
       <div class="row"><span class="lbl">Meetings</span><span id="legend-max" class="hint"></span></div>
       <canvas id="legend-canvas" width="220" height="14"></canvas>
@@ -57,20 +62,27 @@
       </div>
     </section>
 
-    <section id="stats" class="stats"></section>
-
     <footer>
       <p id="meta"></p>
-      <p>Data: <a href="https://github.com/martj42/international_results" target="_blank" rel="noopener">martj42</a> ·
-         ranking <a href="https://github.com/cnc8/fifa-world-ranking" target="_blank" rel="noopener">cnc8</a>.
+      <p>Matches: <a href="https://github.com/martj42/international_results" target="_blank" rel="noopener">martj42</a> ·
+         ranking: <a href="https://www.fotmob.com/fifaranking/men" target="_blank" rel="noopener">FotMob</a>/FIFA ·
+         confederations: <a href="https://github.com/cnc8/fifa-world-ranking" target="_blank" rel="noopener">cnc8</a>.
          Inspired by <a href="https://nflscorigami.com" target="_blank" rel="noopener">Scorigami</a>.</p>
     </footer>
   </aside>
 
   <main id="stage">
-    <canvas id="grid"></canvas>
-    <div id="tooltip" hidden></div>
-    <div id="loading">Loading match history…</div>
+    <div id="headline"></div>
+    <div id="canvas-wrap">
+      <canvas id="grid"></canvas>
+      <div id="zoom-ctl">
+        <button id="zoom-out" title="Zoom out">&minus;</button>
+        <button id="zoom-fit" title="Fit grid to view">Fit</button>
+        <button id="zoom-in" title="Zoom in">+</button>
+      </div>
+      <div id="tooltip" hidden></div>
+      <div id="loading">Loading match history…</div>
+    </div>
   </main>
 </div>
 <script src="app.js"></script>

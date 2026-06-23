@@ -33,6 +33,10 @@ REF = ROOT / "data"
 OUT = ROOT / "docs" / "data"
 
 # --- Sources -----------------------------------------------------------------
+# Match data + former names: martj42 (updated regularly — re-run with --refresh for newer
+# matches). Confederation + membership: cnc8 snapshot (confederation is stable). Current FIFA
+# ranking (both genders): FotMob, which mirrors the official ranking and, unlike FIFA's own
+# gated API, is directly fetchable. cnc8's men's rank is kept only as an offline fallback.
 SOURCES = {
     "results_men.csv":
         "https://raw.githubusercontent.com/martj42/international_results/master/results.csv",
@@ -42,6 +46,14 @@ SOURCES = {
         "https://raw.githubusercontent.com/martj42/womens-international-results/master/results.csv",
     "fifa_ranking_men.csv":
         "https://raw.githubusercontent.com/cnc8/fifa-world-ranking/master/fifa_ranking-2020-12-10.csv",
+    "fotmob_men_ranking.json":
+        "https://www.fotmob.com/api/data/fifarankings/ranking?gender=men",
+    "fotmob_women_ranking.json":
+        "https://www.fotmob.com/api/data/fifarankings/ranking?gender=women",
+    "fotmob_men_period.json":
+        "https://www.fotmob.com/api/data/fifarankings/period?gender=men",
+    "fotmob_women_period.json":
+        "https://www.fotmob.com/api/data/fifarankings/period?gender=women",
 }
 
 CONFED_ORDER = ["AFC", "CAF", "CONCACAF", "CONMEBOL", "OFC", "UEFA"]
@@ -69,6 +81,23 @@ RANKING_ALIASES = {
 
 # Duplicate / variant spellings within the match data that should collapse to one team.
 MATCH_NAME_FIXUPS = {
+    "U.S. Virgin Islands": "United States Virgin Islands",
+}
+
+# FotMob ranking team name -> canonical member name (only the ones that differ).
+FOTMOB_ALIASES = {
+    "USA": "United States",
+    "UAE": "United Arab Emirates",
+    "Turkiye": "Turkey",
+    "Czechia": "Czech Republic",
+    "Ireland": "Republic of Ireland",
+    "Chinese Taipei": "Taiwan",
+    "Curacao": "Curaçao",
+    "Macao": "Macau",
+    "Sao Tome and Principe": "São Tomé and Príncipe",
+    "Central African Rep.": "Central African Republic",
+    "Saint Vincent and The Grenadines": "Saint Vincent and the Grenadines",
+    "St. Kitts and Nevis": "Saint Kitts and Nevis",
     "U.S. Virgin Islands": "United States Virgin Islands",
 }
 
@@ -102,7 +131,9 @@ def download_sources(force: bool = False) -> None:
             log(f"  cached  {fname}")
             continue
         log(f"  fetch   {fname}  <-  {url}")
-        req = urllib.request.Request(url, headers={"User-Agent": "national-team-grid/build"})
+        ua = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+              "(KHTML, like Gecko) Chrome/124.0 Safari/537.36")
+        req = urllib.request.Request(url, headers={"User-Agent": ua})
         with urllib.request.urlopen(req, timeout=60) as r:
             dest.write_bytes(r.read())
 
@@ -119,9 +150,40 @@ def year_of(datestr: str) -> int | None:
         return None
 
 
+def latest_match_date(results_file: str) -> str:
+    """Most recent match date (ISO strings sort lexically)."""
+    return max((row["date"] for row in read_csv(RAW / results_file)), default="")
+
+
 # --- Step 2: canonical member table ------------------------------------------
-def build_members() -> tuple[list[dict], dict[str, int], str]:
-    """Return (members, name->id map, ranking snapshot date)."""
+def load_ranking(gender: str) -> tuple[dict[str, int], str | None]:
+    """Return (canonical_name -> rank, source label). Priority: a hand-maintained
+    data/ranking_<gender>.csv override, else the cached current FotMob ranking."""
+    override = REF / f"ranking_{gender}.csv"
+    if override.exists():
+        ranks = {r["name"].strip(): int(r["rank"]) for r in read_csv(override)}
+        return ranks, f"data/ranking_{gender}.csv ({len(ranks)} teams)"
+
+    fm = RAW / f"fotmob_{gender}_ranking.json"
+    if fm.exists():
+        try:
+            data = json.loads(fm.read_text(encoding="utf-8"))
+            ranks = {FOTMOB_ALIASES.get(row["name"], row["name"]): int(row["rank"])
+                     for row in data}
+            label = ""
+            per = RAW / f"fotmob_{gender}_period.json"
+            if per.exists():
+                p = json.loads(per.read_text(encoding="utf-8"))
+                if p:
+                    label = " " + p[0].get("periodName", "")
+            return ranks, f"FotMob/FIFA {gender}'s ranking{label} ({len(ranks)} teams)"
+        except Exception as e:  # noqa: BLE001
+            log(f"  WARN: could not parse FotMob {gender} ranking ({e})")
+    return {}, None
+
+
+def build_members() -> tuple[list[dict], dict[str, int], dict]:
+    """Return (members, name->id map, metadata)."""
     rows = read_csv(RAW / "fifa_ranking_men.csv", encoding="utf-8")
     snapshot = max(r["rank_date"] for r in rows)
     snap_rows = [r for r in rows if r["rank_date"] == snapshot]
@@ -156,15 +218,22 @@ def build_members() -> tuple[list[dict], dict[str, int], str]:
             added += 1
         log(f"  members_extra.csv: +{added} member(s) absent from the ranking snapshot")
 
-    # Optional women's ranking overlay (member name -> rank) if provided.
-    wpath = REF / "ranking_women.csv"
-    if wpath.exists():
-        wrank = {row["name"].strip(): int(row["rank"]) for row in read_csv(wpath)}
-        for m in members:
-            m["womens_rank"] = wrank.get(m["name"])
-        log(f"  women's ranking overlay applied ({len(wrank)} teams)")
-    else:
-        log("  women's ranking overlay not present -> women ordered alphabetically in-confed")
+    # Overlay current FIFA rankings (men's + women's). The cnc8 men's rank set above is the
+    # offline fallback; FotMob (or a drop-in CSV) supplies the current numbers.
+    men_rank, men_src = load_ranking("men")
+    wom_rank, wom_src = load_ranking("women")
+    member_names = {m["name"] for m in members}
+    for m in members:
+        if m["name"] in men_rank:
+            m["mens_rank"] = men_rank[m["name"]]
+        m["womens_rank"] = wom_rank.get(m["name"])
+    log(f"  men's ranking:    {men_src or 'cnc8 snapshot (fallback)'}")
+    log(f"  women's ranking:  {wom_src or 'NONE -> women ordered alphabetically in-confed'}")
+    for g, rk in (("men", men_rank), ("women", wom_rank)):
+        miss = sorted(set(rk) - member_names)
+        if miss:
+            log(f"  note: {len(miss)} {g}'s ranking names matched no member "
+                f"(ignored): {miss[:8]}{' …' if len(miss) > 8 else ''}")
 
     # Stable default ordering: confederation, then men's rank (unranked last), then name.
     members.sort(key=lambda m: (CONFED_ORDER.index(m["confed"]),
@@ -174,7 +243,8 @@ def build_members() -> tuple[list[dict], dict[str, int], str]:
         m["id"] = i
 
     name_to_id = {m["name"]: m["id"] for m in members}
-    return members, name_to_id, snapshot
+    meta = {"confed_snapshot": snapshot, "ranking_men": men_src, "ranking_women": wom_src}
+    return members, name_to_id, meta
 
 
 # --- Step 3 + 4: normalise names and aggregate pairs -------------------------
@@ -247,8 +317,8 @@ def main() -> int:
     download_sources(force="--refresh" in sys.argv)
 
     log("[2/5] Building canonical member table...")
-    members, name_to_id, snapshot = build_members()
-    log(f"  {len(members)} current FIFA members (ranking snapshot {snapshot})")
+    members, name_to_id, rmeta = build_members()
+    log(f"  {len(members)} current FIFA members")
 
     log("[3/5] Resolving defunct teams present in match data...")
     resolver = build_name_resolver(name_to_id)
@@ -280,11 +350,16 @@ def main() -> int:
     log("[5/5] Writing JSON artifacts...")
     OUT.mkdir(parents=True, exist_ok=True)
     generated = datetime.now().strftime("%Y-%m-%d")
+    data_through = {"men": latest_match_date("results_men.csv"),
+                    "women": latest_match_date("results_women.csv")}
 
     (OUT / "members.json").write_text(json.dumps({
         "generated": generated,
-        "ranking_snapshot_men": snapshot,
         "confederation_order": CONFED_ORDER,
+        "ranking_men": rmeta["ranking_men"],
+        "ranking_women": rmeta["ranking_women"],
+        "confed_snapshot": rmeta["confed_snapshot"],
+        "data_through": data_through,
         "members": members,
     }, ensure_ascii=False), encoding="utf-8")
 
@@ -308,6 +383,9 @@ def main() -> int:
     log(f"  men's pairs:      {len(men_json):>6}  (max meetings {men_max})")
     log(f"  women's pairs:    {len(wom_json):>6}  (max meetings {wom_max})")
     log(f"  defunct members:  {len(defunct_members)}  -> {[m['name'] for m in defunct_members]}")
+    log(f"  match data through:  men {data_through['men']}  |  women {data_through['women']}")
+    log(f"  ranking (men):    {rmeta['ranking_men']}")
+    log(f"  ranking (women):  {rmeta['ranking_women']}")
 
     # Sanity asserts
     assert len(members) >= 200, "expected ~210 current members"

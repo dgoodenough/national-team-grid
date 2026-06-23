@@ -22,6 +22,7 @@ const S = {
   meta: {},
   // view options
   gender: "men",
+  sort: "confed",                    // "confed" | "rank" | "alpha"
   showConfeds: new Set(),
   manual: new Set(),
   includeDefunct: false,
@@ -49,7 +50,12 @@ async function load() {
 
   S.members = members.members;
   S.confedOrder = members.confederation_order;
-  S.meta = { generated: members.generated, snapshot: members.ranking_snapshot_men };
+  S.meta = {
+    generated: members.generated,
+    dataThrough: members.data_through || {},
+    rankingMen: members.ranking_men,
+    rankingWomen: members.ranking_women,
+  };
   S.defunct = defunct;
   for (const m of S.members) S.byId.set(m.id, m);
   for (const m of defunct.members) S.byId.set(m.id, m);
@@ -94,6 +100,13 @@ function recompute(fit) {
   else active = base.filter(m => S.showConfeds.has(m.confed));
 
   active.sort((a, b) => {
+    if (S.sort === "alpha") return a.name.localeCompare(b.name);
+    if (S.sort === "rank") {
+      const ra = rankOf(a), rb = rankOf(b);
+      if (ra !== rb) return ra - rb;
+      return a.name.localeCompare(b.name);
+    }
+    // confederation, then FIFA rank, then name
     const ca = S.confedOrder.indexOf(a.confed), cb = S.confedOrder.indexOf(b.confed);
     if (ca !== cb) return ca - cb;
     const ra = rankOf(a), rb = rankOf(b);
@@ -211,7 +224,7 @@ function draw() {
   }
   ctx.restore();
 
-  drawSeparators(n, ox, oy, cell, gw, gh, r0, r1, c0, c1);
+  if (S.sort === "confed") drawSeparators(n, ox, oy, cell, gw, gh, r0, r1, c0, c1);
   drawLabels(n, ox, oy, cell, r0, r1, c0, c1);
   drawBands(n, ox, oy, cell);
 
@@ -257,44 +270,55 @@ function drawLabels(n, ox, oy, cell, r0, r1, c0, c1) {
   ctx.font = `${fs}px -apple-system, "Segoe UI", sans-serif`;
   ctx.fillStyle = getCss("--ink");
 
-  // rows (left margin, right-aligned)
+  // Keep labels clear of the confederation colour band (the outer BAND-px strip).
+  const edge = MARGIN - BAND - 4;          // inner edge of the band
+  const maxLen = MARGIN - BAND - 8;        // max label width inside the margin
+
+  // rows (left margin, right-aligned up to the band)
   ctx.textAlign = "right"; ctx.textBaseline = "middle";
   for (let r = r0; r < r1; r++) {
     const m = S.byId.get(S.order[r]);
     ctx.fillStyle = m.defunct ? getCss("--ink-dim") : getCss("--ink");
-    ctx.fillText(shortLabel(m, cell), MARGIN - 6, oy + r * cell + cell / 2, MARGIN - BAND - 8);
+    ctx.fillText(shortLabel(m, cell), edge, oy + r * cell + cell / 2, maxLen);
   }
-  // cols (top margin, rotated)
+  // cols (top margin, rotated, starting at the band edge)
   ctx.textAlign = "left"; ctx.textBaseline = "middle";
   for (let c = c0; c < c1; c++) {
     const m = S.byId.get(S.order[c]);
-    const x = ox + c * cell + cell / 2, y = MARGIN - 6;
+    const x = ox + c * cell + cell / 2;
     ctx.save();
-    ctx.translate(x, y); ctx.rotate(-Math.PI / 2);
+    ctx.translate(x, edge); ctx.rotate(-Math.PI / 2);
     ctx.fillStyle = m.defunct ? getCss("--ink-dim") : getCss("--ink");
-    ctx.fillText(shortLabel(m, cell), 0, 0, MARGIN - BAND - 8);
+    ctx.fillText(shortLabel(m, cell), 0, 0, maxLen);
     ctx.restore();
   }
 }
 
 function drawBands(n, ox, oy, cell) {
+  const { w: gw, h: gh } = gridArea();
+  const right = MARGIN + gw, bottom = MARGIN + gh;
   const runs = confedRuns();
   ctx.textAlign = "center"; ctx.textBaseline = "middle";
   ctx.font = "700 10px -apple-system, sans-serif";
+  const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
   for (const run of runs) {
     const col = CONFED_COLOR[run.confed] || "#888";
     const a = run.start * cell, len = (run.end - run.start + 1) * cell;
-    // top strip
     ctx.fillStyle = col;
-    ctx.fillRect(ox + a, MARGIN - BAND, len, BAND);
-    // left strip
-    ctx.fillRect(MARGIN - BAND, oy + a, BAND, len);
-    // labels if room
-    if (len > 26) {
+    ctx.fillRect(ox + a, MARGIN - BAND, len, BAND);          // top strip
+    ctx.fillRect(MARGIN - BAND, oy + a, BAND, len);          // left strip
+    // Label, stuck to the visible portion of the run (only when there's room).
+    const visW = Math.min(ox + a + len, right) - Math.max(ox + a, MARGIN);
+    const visH = Math.min(oy + a + len, bottom) - Math.max(oy + a, MARGIN);
+    ctx.fillStyle = "#0e1016";
+    if (visW > 26) {
+      const cx = clamp(ox + a + len / 2, MARGIN + 12, right - 12);
+      ctx.fillText(run.confed, cx, MARGIN - BAND / 2 - .5);
+    }
+    if (visH > 26) {
+      const cy = clamp(oy + a + len / 2, MARGIN + 12, bottom - 12);
       ctx.save();
-      ctx.fillStyle = "#0e1016";
-      ctx.fillText(run.confed, ox + a + len / 2, MARGIN - BAND / 2 - .5);
-      ctx.translate(MARGIN - BAND / 2, oy + a + len / 2); ctx.rotate(-Math.PI / 2);
+      ctx.translate(MARGIN - BAND / 2, cy); ctx.rotate(-Math.PI / 2);
       ctx.fillText(run.confed, 0, .5);
       ctx.restore();
     }
@@ -338,9 +362,8 @@ function showTooltip(cellRC, mx, my) {
   const pad = 14;
   let x = mx + pad, y = my + pad;
   const rect = tooltip.getBoundingClientRect();
-  const stage = document.getElementById("stage").getBoundingClientRect();
-  if (x + rect.width > stage.width) x = mx - rect.width - pad;
-  if (y + rect.height > stage.height) y = my - rect.height - pad;
+  if (x + rect.width > canvas.clientWidth) x = mx - rect.width - pad;
+  if (y + rect.height > canvas.clientHeight) y = my - rect.height - pad;
   tooltip.style.left = x + "px";
   tooltip.style.top = y + "px";
 }
@@ -396,8 +419,15 @@ function buildControls() {
       document.querySelectorAll("#gender button").forEach(b => b.classList.remove("active"));
       btn.classList.add("active");
       S.gender = btn.dataset.gender;
+      buildTeamList();           // refresh the rank shown per gender
       recompute(false);
     });
+  });
+
+  // sort
+  document.getElementById("sort").addEventListener("change", e => {
+    S.sort = e.target.value;
+    recompute(true);
   });
 
   // confederation checkboxes
@@ -434,12 +464,31 @@ function buildControls() {
   document.getElementById("team-search").addEventListener("input", buildTeamList);
   buildTeamList();
 
-  document.getElementById("reset-view").onclick = () => { recompute(true); };
+  // zoom controls (viewpane)
+  document.getElementById("zoom-in").onclick = () => zoomBy(1.4);
+  document.getElementById("zoom-out").onclick = () => zoomBy(1 / 1.4);
+  document.getElementById("zoom-fit").onclick = () => { fitView(); draw(); };
 
-  // meta
-  document.getElementById("meta").textContent =
-    `${S.members.length} current FIFA members · men's ranking snapshot ${S.meta.snapshot} · built ${S.meta.generated}`;
+  // meta / provenance
+  const dt = S.meta.dataThrough || {};
+  const fmt = iso => iso ? new Date(iso).toLocaleDateString(undefined, { year: "numeric", month: "short" }) : "?";
+  document.getElementById("meta").innerHTML =
+    `${S.members.length} current FIFA members · matches through <b>${fmt(dt.men)}</b> (men) / `
+    + `<b>${fmt(dt.women)}</b> (women) · rankings ${S.meta.rankingMen || "—"}, `
+    + `${S.meta.rankingWomen || "—"}.`;
   document.getElementById("legend-max").textContent = `1 → ${S.maxCount[S.gender]}`;
+}
+
+function zoomBy(factor) {
+  const { w, h } = gridArea();
+  const cx = w / 2, cy = h / 2;            // zoom about the viewport centre
+  const newCell = Math.max(2, Math.min(80, S.cell * factor));
+  const k = newCell / S.cell;
+  S.tx = cx - (cx - S.tx) * k;
+  S.ty = cy - (cy - S.ty) * k;
+  S.cell = newCell;
+  clampPan();
+  draw();
 }
 
 function toggleConfeds(on) {
@@ -458,7 +507,8 @@ function buildTeamList() {
   for (const m of pool) {
     if (q && !m.name.toLowerCase().includes(q)) continue;
     const lab = document.createElement("label");
-    const rk = m.mens_rank ? `#${m.mens_rank}` : (m.defunct ? "defunct" : "—");
+    const r = S.gender === "men" ? m.mens_rank : m.womens_rank;
+    const rk = r ? `#${r}` : (m.defunct ? "defunct" : "unranked");
     lab.innerHTML = `<input type="checkbox" data-id="${m.id}" ${S.manual.has(m.id) ? "checked" : ""}>
       ${m.name} <span class="rk">${m.confed} ${rk}</span>`;
     list.appendChild(lab);
@@ -481,12 +531,12 @@ function updateStats() {
       if (lookup(S.order[i], S.order[j])) met++;
   const never = total - met;
   const pct = total ? (100 * met / total) : 0;
-  document.getElementById("stats").innerHTML =
-    `<span class="big">${never.toLocaleString()}</span>
-     never-played pairs of ${total.toLocaleString()} possible
-     <div class="dim" style="margin-top:6px;color:var(--ink-dim)">
-       <b>${pct.toFixed(1)}%</b> of matchups in view have ever happened (${S.gender}'s)
-     </div>`;
+  const scope = (S.manual.size || S.showConfeds.size < S.confedOrder.length) ? "in this view" : "";
+  document.getElementById("headline").innerHTML =
+    `<span class="big">${never.toLocaleString()}</span>`
+    + `<span class="rest"><b>${S.gender === "men" ? "men's" : "women's"}</b> matchups have `
+    + `<b>never</b> been played ${scope} — just <b>${pct.toFixed(1)}%</b> of the `
+    + `${total.toLocaleString()} possible pairings have ever happened.</span>`;
 }
 
 /* ---------- boot ---------- */
