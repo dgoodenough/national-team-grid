@@ -9,7 +9,7 @@ const CONFED_COLOR = {
   CONMEBOL: "#4f8fd0", OFC: "#b07a52", UEFA: "#9a6ad6",
 };
 const KEY = 100000;                  // pair-key multiplier (ids stay well below this)
-const MARGIN = 116;                  // px reserved for labels + confederation band
+let MARGIN = 116;                    // px reserved for labels + confederation band (set in resize)
 const BAND = 13;                     // px confederation colour strip at outer edge
 
 const S = {
@@ -180,6 +180,8 @@ function resize() {
   canvas.width = Math.floor(canvas.clientWidth * DPR);
   canvas.height = Math.floor(canvas.clientHeight * DPR);
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  // Smaller label margin on narrow screens so the grid isn't dominated by it.
+  MARGIN = Math.round(Math.max(56, Math.min(116, canvas.clientWidth * 0.2)));
 }
 
 function draw() {
@@ -374,53 +376,88 @@ function showTooltip(cellRC, mx, my) {
   tooltip.style.top = y + "px";
 }
 
-function setupInteraction() {
-  let dragging = false, downX = 0, downY = 0, lastX = 0, lastY = 0;
+function zoomAt(px, py, newCell) {  // px,py = canvas-relative coords of the fixed point
+  newCell = Math.max(2, Math.min(80, newCell));
+  const k = newCell / S.cell;
+  const mx = px - MARGIN, my = py - MARGIN;
+  S.tx = mx - (mx - S.tx) * k;
+  S.ty = my - (my - S.ty) * k;
+  S.cell = newCell;
+  clampPan();
+  draw();
+}
 
-  canvas.addEventListener("mousedown", e => {
-    dragging = true; downX = lastX = e.clientX; downY = lastY = e.clientY;
-    canvas.classList.add("panning");
-  });
-  window.addEventListener("mouseup", e => {
-    if (dragging && Math.hypot(e.clientX - downX, e.clientY - downY) < 4) {
-      // treat as a click, not a pan -> open match detail for that cell
-      const r = canvas.getBoundingClientRect();
-      const rc = cellAt(e.clientX - r.left, e.clientY - r.top);
-      if (rc) openDetail(rc); else closeDetail();
+function setupInteraction() {
+  // Pointer Events unify mouse + touch: 1 pointer = pan/tap, 2 pointers = pinch-zoom.
+  const pts = new Map();            // active pointers: id -> {x, y}
+  let mode = null;                  // "pan" | "pinch"
+  let downX = 0, downY = 0, moved = false;
+  let pinchDist = 0, pinchCell = 0;
+  const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+
+  canvas.addEventListener("pointerdown", e => {
+    try { canvas.setPointerCapture(e.pointerId); } catch { /* non-fatal */ }
+    pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pts.size === 1) {
+      mode = "pan"; downX = e.clientX; downY = e.clientY; moved = false;
+      canvas.classList.add("panning");
+    } else if (pts.size === 2) {
+      mode = "pinch";
+      const [a, b] = [...pts.values()];
+      pinchDist = dist(a, b) || 1; pinchCell = S.cell;
     }
-    dragging = false; canvas.classList.remove("panning");
   });
-  window.addEventListener("mousemove", e => {
+
+  canvas.addEventListener("pointermove", e => {
     const r = canvas.getBoundingClientRect();
-    const mx = e.clientX - r.left, my = e.clientY - r.top;
-    if (dragging) {
-      S.tx += e.clientX - lastX; S.ty += e.clientY - lastY;
-      lastX = e.clientX; lastY = e.clientY;
-      clampPan();
-      S.hover = null; tooltip.hidden = true;
-      draw();
+    if (!pts.has(e.pointerId)) {                 // hover (mouse only — no button held)
+      if (e.pointerType === "mouse") {
+        const rc = cellAt(e.clientX - r.left, e.clientY - r.top);
+        S.hover = rc;
+        if (rc) showTooltip(rc, e.clientX - r.left, e.clientY - r.top); else tooltip.hidden = true;
+        draw();
+      }
       return;
     }
-    const rc = cellAt(mx, my);
-    S.hover = rc;
-    if (rc) { showTooltip(rc, mx, my); } else { tooltip.hidden = true; }
-    draw();
+    const prev = pts.get(e.pointerId);
+    pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+    if (mode === "pinch" && pts.size >= 2) {
+      const [a, b] = [...pts.values()];
+      const cx = (a.x + b.x) / 2 - r.left, cy = (a.y + b.y) / 2 - r.top;
+      zoomAt(cx, cy, pinchCell * (dist(a, b) / pinchDist));
+    } else if (mode === "pan") {
+      S.tx += e.clientX - prev.x; S.ty += e.clientY - prev.y;
+      if (Math.hypot(e.clientX - downX, e.clientY - downY) >= 5) moved = true;
+      clampPan(); S.hover = null; tooltip.hidden = true; draw();
+    }
   });
-  canvas.addEventListener("mouseleave", () => { S.hover = null; tooltip.hidden = true; draw(); });
+
+  function endPointer(e) {
+    if (pts.has(e.pointerId)) {
+      if (mode === "pan" && pts.size === 1 && !moved) {   // a tap/click -> open detail
+        const r = canvas.getBoundingClientRect();
+        const rc = cellAt(e.clientX - r.left, e.clientY - r.top);
+        if (rc) openDetail(rc); else closeDetail();
+      }
+      pts.delete(e.pointerId);
+    }
+    if (pts.size === 0) { mode = null; canvas.classList.remove("panning"); }
+    else if (pts.size === 1) {                  // a finger lifted after a pinch
+      mode = "pan"; const p = [...pts.values()][0];
+      downX = p.x; downY = p.y; moved = true;   // don't treat the lift as a tap
+    }
+  }
+  canvas.addEventListener("pointerup", endPointer);
+  canvas.addEventListener("pointercancel", endPointer);
+  canvas.addEventListener("pointerleave", e => {
+    if (e.pointerType === "mouse") { S.hover = null; tooltip.hidden = true; draw(); }
+  });
 
   canvas.addEventListener("wheel", e => {
     e.preventDefault();
     const r = canvas.getBoundingClientRect();
-    const mx = e.clientX - r.left - MARGIN, my = e.clientY - r.top - MARGIN;
-    const factor = Math.exp(-e.deltaY * 0.0015);
-    const newCell = Math.max(2, Math.min(80, S.cell * factor));
-    const k = newCell / S.cell;
-    // keep the point under the cursor fixed
-    S.tx = mx - (mx - S.tx) * k;
-    S.ty = my - (my - S.ty) * k;
-    S.cell = newCell;
-    clampPan();
-    draw();
+    zoomAt(e.clientX - r.left, e.clientY - r.top, S.cell * Math.exp(-e.deltaY * 0.0015));
   }, { passive: false });
 }
 
@@ -556,15 +593,7 @@ function buildControls() {
 }
 
 function zoomBy(factor) {
-  const { w, h } = gridArea();
-  const cx = w / 2, cy = h / 2;            // zoom about the viewport centre
-  const newCell = Math.max(2, Math.min(80, S.cell * factor));
-  const k = newCell / S.cell;
-  S.tx = cx - (cx - S.tx) * k;
-  S.ty = cy - (cy - S.ty) * k;
-  S.cell = newCell;
-  clampPan();
-  draw();
+  zoomAt(canvas.clientWidth / 2, canvas.clientHeight / 2, S.cell * factor);
 }
 
 function toggleConfeds(on) {

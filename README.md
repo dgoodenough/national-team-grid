@@ -125,8 +125,9 @@ most internationals. **The current cut-off date for each archive is recorded in 
 ## Tech
 
 Pure static site — vanilla JavaScript + HTML5 Canvas, no build step and no runtime dependencies.
-The ~44,000-cell grid is drawn directly to a canvas with view-culling for smooth zoom/pan. Hosted
-on GitHub Pages straight from `docs/`.
+The ~44,000-cell grid is drawn directly to a canvas with view-culling for smooth zoom/pan. Pointer
+Events drive one interaction path for both mouse (hover, drag, click, wheel) and touch (drag to pan,
+pinch to zoom, tap for detail), and the layout reflows for phones. Hosted on GitHub Pages from `docs/`.
 
 ## Credits
 

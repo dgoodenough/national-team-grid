@@ -104,7 +104,7 @@ button.wide:hover { border-color: var(--accent); }
 #headline.hl .big { color: var(--never-hi); }
 
 #canvas-wrap { position: relative; flex: 1; min-height: 0; overflow: hidden; }
-#grid { display: block; width: 100%; height: 100%; cursor: grab; }
+#grid { display: block; width: 100%; height: 100%; cursor: grab; touch-action: none; }
 #grid.panning { cursor: grabbing; }
 
 #zoom-ctl {
@@ -169,8 +169,23 @@ button.wide:hover { border-color: var(--accent); }
 #detail .mr .tn { color: var(--ink-dim); font-size: .72rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 @media (max-width: 720px) {
-  #app { flex-direction: column; }
-  #panel { width: 100%; min-width: 0; height: auto; max-height: 45vh; border-right: none; border-bottom: 1px solid var(--line); }
-  #headline .big { font-size: 1.8rem; }
+  body { overflow-y: auto; overflow-x: hidden; }
+  #app { flex-direction: column; height: auto; min-height: 100vh; min-height: 100dvh; width: 100%; }
+  /* Grid + headline first; controls scroll below it. */
+  #stage { order: 1; flex: none; height: auto; }
+  #panel {
+    order: 2; width: 100%; min-width: 0; height: auto; max-height: none; overflow: visible;
+    border-right: none; border-top: 1px solid var(--line);
+  }
+  #panel header { display: none; }                /* title lives in the headline already */
+  /* Definite height so the flex-grow chain can't collapse it (and the detail
+     card's percentage max-height resolves correctly). */
+  #canvas-wrap { flex: none; height: 64vh; }
+  #headline { padding: 12px 16px; }
+  #headline .big { font-size: 2rem; }
   #headline .rest { font-size: .82rem; }
+  #zoom-ctl button { width: 42px; height: 42px; font-size: 1.15rem; }
+  #zoom-ctl button#zoom-fit { width: auto; padding: 0 14px; }
+  #detail { width: auto; left: 12px; right: 12px; max-height: 78%; }
+  .ctl { margin-top: 22px; }                      /* a touch more breathing room */
 }
