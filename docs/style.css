@@ -8,6 +8,7 @@
   --accent: #4dd0a7;
   --never: #11131a;       /* never-played cell */
   --never-hi: #ff3b6b;    /* never-played when highlighted */
+  --upcoming: #ffd21e;    /* scheduled first meeting (upcoming FIFAGami) */
   --diag: #39404f;        /* same-team diagonal */
   font-size: 14px;
 }
@@ -77,7 +78,10 @@ button.wide:hover { border-color: var(--accent); }
 .legend-keys { display: flex; gap: 16px; margin-top: 8px; font-size: .74rem; color: var(--ink-dim); }
 .legend-keys .sw { display: inline-block; width: 11px; height: 11px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; }
 #sw-never { background: var(--never); border: 1px solid var(--line); }
+#sw-upcoming { background: var(--upcoming); }
 #sw-diag { background: var(--diag); }
+
+#year-scrub { width: 100%; accent-color: var(--accent); cursor: pointer; }
 
 #sort {
   width: 100%; padding: 7px 9px; background: var(--panel-2); border: 1px solid var(--line);

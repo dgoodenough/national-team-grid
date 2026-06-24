@@ -19,6 +19,8 @@ const S = {
   pairs: { men: new Map(), women: new Map() },
   maxCount: { men: 1, women: 1 },
   matches: { men: null, women: null },   // per-meeting detail, lazy-loaded on first click
+  upcoming: { men: new Map(), women: new Map() }, // scheduled first meetings (key -> [date, tourn])
+  yearsByPair: { men: null, women: null }, // key -> sorted meeting years (built from matches)
   meta: {},
   // view options
   gender: "men",
@@ -27,6 +29,9 @@ const S = {
   manual: new Set(),
   includeDefunct: false,
   highlightNever: false,
+  showUpcoming: false,               // highlight upcoming first meetings in yellow
+  year: null,                        // scrubber: show grid as of this year (null = present)
+  maxYear: 2026,
   // ordered ids currently displayed
   order: [],
   // viewport: on-screen cell size (px) + pan offset
@@ -42,11 +47,12 @@ let DPR = window.devicePixelRatio || 1;
 
 /* ---------- data loading ---------- */
 async function load() {
-  const [members, mMen, mWomen, defunct] = await Promise.all([
+  const [members, mMen, mWomen, defunct, upcoming] = await Promise.all([
     fetch("data/members.json").then(r => r.json()),
     fetch("data/matrix_men.json").then(r => r.json()),
     fetch("data/matrix_women.json").then(r => r.json()),
     fetch("data/defunct.json").then(r => r.json()),
+    fetch("data/upcoming.json").then(r => r.json()).catch(() => ({ men: [], women: [] })),
   ]);
 
   S.members = members.members;
@@ -67,6 +73,17 @@ async function load() {
   S.maxCount.women = mWomen.max_count;
   S.showConfeds = new Set(S.confedOrder);
 
+  for (const g of ["men", "women"]) {
+    for (const [i, j, date, tourn] of (upcoming[g] || [])) {
+      S.upcoming[g].set(`${i},${j}`, [date, tourn]);
+    }
+  }
+  // latest played year across both archives drives the scrubber's right end.
+  let maxY = 1900;
+  for (const mx of [mMen, mWomen]) for (const p of mx.pairs) if (p[4] > maxY) maxY = p[4];
+  S.maxYear = maxY;
+  S.year = maxY;
+
   document.getElementById("loading").remove();
   buildControls();
   drawLegend();
@@ -86,6 +103,35 @@ function lookup(a, b) {
   if (a === b) return null;
   const k = a < b ? `${a},${b}` : `${b},${a}`;
   return S.pairs[S.gender].get(k) || null;
+}
+
+function present() { return S.year == null || S.year >= S.maxYear; }
+
+function pairKey(a, b) { return a < b ? `${a},${b}` : `${b},${a}`; }
+
+// Number of meetings as of the scrubber year (== total at present).
+function countAsOf(a, b) {
+  if (a === b) return 0;
+  const k = pairKey(a, b);
+  if (present()) { const p = S.pairs[S.gender].get(k); return p ? p[0] : 0; }
+  const ys = S.yearsByPair[S.gender];
+  if (!ys) { const p = S.pairs[S.gender].get(k); return p ? p[0] : 0; }  // not loaded yet
+  const arr = ys.get(k);
+  if (!arr) return 0;
+  let lo = 0, hi = arr.length;                          // count years <= S.year (arr sorted asc)
+  while (lo < hi) { const m = (lo + hi) >> 1; if (arr[m] <= S.year) lo = m + 1; else hi = m; }
+  return lo;
+}
+
+function upcomingInfo(a, b) { return S.upcoming[S.gender].get(pairKey(a, b)) || null; }
+
+// Build per-pair sorted meeting-year arrays from the (lazy-loaded) match detail.
+async function ensureYears(gender) {
+  if (S.yearsByPair[gender]) return;
+  const data = await ensureMatches(gender);
+  const m = new Map();
+  for (const k in data.pairs) m.set(k, data.pairs[k].map(x => x[0]).filter(y => y != null));
+  S.yearsByPair[gender] = m;
 }
 
 /* ---------- ordering ---------- */
@@ -229,6 +275,8 @@ function draw() {
   ctx.rect(MARGIN, MARGIN, gw, gh);
   ctx.clip();
   const diag = getCss("--diag");
+  const upcomingCol = getCss("--upcoming");
+  const atPresent = present();
   const span = Math.ceil(cell) + (cell > 7 ? 0 : 1);
   for (let r = r0; r < r1; r++) {
     const a = S.order[r];
@@ -237,7 +285,11 @@ function draw() {
       const b = S.order[c];
       let col;
       if (a === b) col = diag;
-      else { const p = lookup(a, b); col = cellColor(p ? p[0] : 0); }
+      else {
+        const cnt = countAsOf(a, b);
+        if (!cnt && S.showUpcoming && atPresent && upcomingInfo(a, b)) col = upcomingCol;
+        else col = cellColor(cnt);
+      }
       ctx.fillStyle = col;
       ctx.fillRect(Math.floor(ox + c * cell), Math.floor(y), span, span);
     }
@@ -381,10 +433,20 @@ function showTooltip(cellRC, mx, my) {
   if (A.id === B.id) {
     body = `<div class="vs">${A.name}</div><div class="dim">${A.confed}${A.defunct ? " · defunct" : ""}</div>`;
   } else {
-    const p = lookup(A.id, B.id);
-    const meetings = p
-      ? `<span class="n">${p[0]}</span> meeting${p[0] === 1 ? "" : "s"}<div class="dim">${p[1]}–${p[2]} · ${S.gender}'s</div>`
-      : `<span class="n">never played</span><div class="dim">${S.gender}'s internationals</div>`;
+    const cnt = countAsOf(A.id, B.id);
+    const asOf = present() ? "" : ` by ${S.year}`;
+    const up = upcomingInfo(A.id, B.id);
+    let meetings;
+    if (cnt) {
+      const p = lookup(A.id, B.id);
+      meetings = `<span class="n">${cnt}</span> meeting${cnt === 1 ? "" : "s"}${asOf}`
+        + `<div class="dim">${present() ? `${p[1]}–${p[2]}` : `since ${p[1]}`} · ${S.gender}'s</div>`;
+    } else if (up && present()) {
+      meetings = `<span class="n" style="color:var(--upcoming)">first meeting coming up</span>`
+        + `<div class="dim">${up[0]} · ${up[1]}</div>`;
+    } else {
+      meetings = `<span class="n">never played${asOf}</span><div class="dim">${S.gender}'s internationals</div>`;
+    }
     body = `<div class="vs">${A.name} <span class="dim">v</span> ${B.name}</div>${meetings}`;
   }
   tooltip.innerHTML = body;
@@ -609,6 +671,8 @@ function buildControls() {
       btn.classList.add("active");
       S.gender = btn.dataset.gender;
       buildTeamList();           // refresh the rank shown per gender
+      updateUpcomingCount();
+      if (!present()) ensureYears(S.gender).then(draw);
       recompute(false);
     });
   });
@@ -642,7 +706,23 @@ function buildControls() {
 
   // options
   document.getElementById("opt-highlight").onchange = e => { S.highlightNever = e.target.checked; draw(); };
+  document.getElementById("opt-upcoming").onchange = e => { S.showUpcoming = e.target.checked; draw(); };
   document.getElementById("opt-defunct").onchange = e => { S.includeDefunct = e.target.checked; buildTeamList(); recompute(true); };
+  updateUpcomingCount();
+
+  // timeline scrubber
+  const scrub = document.getElementById("year-scrub");
+  scrub.min = 1872; scrub.max = S.maxYear; scrub.value = S.maxYear;
+  setYearLabel();
+  scrub.addEventListener("input", e => {
+    S.year = +e.target.value;
+    setYearLabel();
+    if (!present() && !S.yearsByPair[S.gender]) {       // lazy-load per-pair years on first scrub
+      document.getElementById("year-label").textContent = S.year + " · loading…";
+      ensureYears(S.gender).then(() => { setYearLabel(); updateStats(); draw(); });
+    }
+    updateStats(); draw();
+  });
 
   // manual team list
   document.getElementById("manual-clear").onclick = () => {
@@ -702,6 +782,16 @@ function buildTeamList() {
   };
 }
 
+function setYearLabel() {
+  const el = document.getElementById("year-label");
+  if (el) el.textContent = present() ? `present (${S.maxYear})` : `${S.year}`;
+}
+
+function updateUpcomingCount() {
+  const el = document.getElementById("upcoming-count");
+  if (el) { const n = S.upcoming[S.gender].size; el.textContent = n ? `(${n})` : "(none)"; }
+}
+
 /* ---------- stats ---------- */
 function updateStats() {
   const n = S.order.length;
@@ -709,10 +799,11 @@ function updateStats() {
   let met = 0;
   for (let i = 0; i < n; i++)
     for (let j = i + 1; j < n; j++)
-      if (lookup(S.order[i], S.order[j])) met++;
+      if (countAsOf(S.order[i], S.order[j])) met++;
   const never = total - met;
   const g = S.gender === "men" ? "men's" : "women's";
-  const scope = (S.manual.size || S.showConfeds.size < S.confedOrder.length) ? " in this view" : "";
+  const filter = (S.manual.size || S.showConfeds.size < S.confedOrder.length) ? " in this view" : "";
+  const scope = present() ? filter : `${filter} by ${S.year}`;
   const headline = document.getElementById("headline");
   const pl = (k, w) => (k === 1 ? w : w + "s");
 

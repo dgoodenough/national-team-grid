@@ -41,7 +41,14 @@
 
     <section class="ctl">
       <label class="check"><input type="checkbox" id="opt-highlight" /> Highlight never-played</label>
+      <label class="check"><input type="checkbox" id="opt-upcoming" /> Highlight upcoming first meetings <span class="hint" id="upcoming-count"></span></label>
       <label class="check"><input type="checkbox" id="opt-defunct" /> Include defunct teams <span class="hint">(advanced)</span></label>
+    </section>
+
+    <section class="ctl">
+      <div class="row"><span class="lbl">Timeline</span><span id="year-label" class="hint"></span></div>
+      <input type="range" id="year-scrub" min="1872" max="2026" step="1" />
+      <p class="hint">Scrub to watch the grid fill in — empty cells are matchups that hadn't happened yet.</p>
     </section>
 
     <section class="ctl">
@@ -58,6 +65,7 @@
       <canvas id="legend-canvas" width="220" height="14"></canvas>
       <div class="legend-keys">
         <span><i class="sw" id="sw-never"></i> never played</span>
+        <span><i class="sw" id="sw-upcoming"></i> upcoming</span>
         <span><i class="sw" id="sw-diag"></i> same team</span>
       </div>
     </section>

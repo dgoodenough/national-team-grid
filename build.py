@@ -270,13 +270,15 @@ def canonical(name: str, resolver: dict[str, str]) -> str:
 def aggregate(results_file: str, resolver: dict[str, str], name_to_id: dict[str, int],
               defunct_ids: dict[str, int]):
     """Aggregate pairwise meetings.
-    Returns (member_pairs, defunct_pairs, unmatched, details, tournaments).
+    Returns (member_pairs, defunct_pairs, unmatched, details, tournaments, upcoming).
     `details[(lo, hi)]` is a per-meeting list of [year, goals_lo, goals_hi, tournament_idx]
-    (goals from the perspective of the lower-id team); `tournaments` is the interning table."""
+    (goals from the perspective of the lower-id team); `tournaments` is the interning table;
+    `upcoming[(lo, hi)]` is (date, tournament) for a scheduled-but-unplayed member fixture."""
     member_pairs: dict[tuple[int, int], list] = {}
     defunct_pairs: dict[tuple[int, int], list] = {}
     unmatched: dict[str, int] = {}
     details: dict[tuple[int, int], list] = {}
+    upcoming: dict[tuple[int, int], tuple] = {}
     tournaments: list[str] = []
     tindex: dict[str, int] = {}
 
@@ -311,6 +313,9 @@ def aggregate(results_file: str, resolver: dict[str, str], name_to_id: dict[str,
         try:
             hs, as_ = int(row["home_score"]), int(row["away_score"])
         except (ValueError, TypeError):
+            if not (da or db):                       # scheduled member-vs-member fixture
+                k = (min(ia, ib), max(ia, ib))
+                upcoming.setdefault(k, (row["date"], row["tournament"].strip()))
             continue
 
         key = (min(ia, ib), max(ia, ib))
@@ -328,7 +333,7 @@ def aggregate(results_file: str, resolver: dict[str, str], name_to_id: dict[str,
         g_lo, g_hi = (hs, as_) if ia <= ib else (as_, hs)
         details.setdefault(key, []).append([yr, g_lo, g_hi, t_idx(row["tournament"].strip())])
 
-    return member_pairs, defunct_pairs, unmatched, details, tournaments
+    return member_pairs, defunct_pairs, unmatched, details, tournaments, upcoming
 
 
 def pairs_to_json(pairs: dict[tuple[int, int], list]) -> tuple[list, int]:
@@ -355,9 +360,9 @@ def main() -> int:
     defunct_ids = {name: 100000 + i for i, name in enumerate(defunct_present)}
 
     log("[4/5] Aggregating pairwise meetings...")
-    men_pairs, men_def, men_unmatched, men_details, men_tourn = aggregate(
+    men_pairs, men_def, men_unmatched, men_details, men_tourn, men_up = aggregate(
         "results_men.csv", resolver, name_to_id, defunct_ids)
-    wom_pairs, wom_def, wom_unmatched, wom_details, wom_tourn = aggregate(
+    wom_pairs, wom_def, wom_unmatched, wom_details, wom_tourn, wom_up = aggregate(
         "results_women.csv", resolver, name_to_id, defunct_ids)
 
     men_json, men_max = pairs_to_json(men_pairs)
@@ -416,6 +421,18 @@ def main() -> int:
     n_men = write_matches("men", men_details, men_tourn)
     n_wom = write_matches("women", wom_details, wom_tourn)
 
+    # Upcoming FIFAGami: a scheduled (future-dated) fixture between members who have NEVER met.
+    today = date.today().isoformat()
+
+    def upcoming_gami(upcoming: dict, played: dict) -> list:
+        out = [[lo, hi, d, t] for (lo, hi), (d, t) in upcoming.items()
+               if (lo, hi) not in played and d >= today]
+        return sorted(out)
+    upcoming_json = {"men": upcoming_gami(men_up, men_pairs),
+                     "women": upcoming_gami(wom_up, wom_pairs)}
+    (OUT / "upcoming.json").write_text(json.dumps(upcoming_json, ensure_ascii=False),
+                                       encoding="utf-8")
+
     # --- Report ---
     log("")
     log(f"  members:          {len(members)}")
@@ -429,6 +446,11 @@ def main() -> int:
     mw_kb = (OUT / "matches_women.json").stat().st_size / 1024
     log(f"  match detail (lazy-loaded on click): "
         f"men {n_men} meetings / {mm_kb:.0f} KB, women {n_wom} / {mw_kb:.0f} KB")
+    id_to_name = {m["id"]: m["name"] for m in members}
+    log(f"  upcoming FIFAGami (scheduled first meetings): "
+        f"men {len(upcoming_json['men'])}, women {len(upcoming_json['women'])}")
+    for lo, hi, d, t in upcoming_json["men"][:12]:
+        log(f"      {d}  {id_to_name[lo]} – {id_to_name[hi]}  ({t})")
 
     # Sanity asserts
     assert len(members) >= 200, "expected ~210 current members"

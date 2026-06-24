@@ -42,6 +42,12 @@ have simply never met.
   most- to least-played (with a *never-met* tally); tick **two or more** to build a custom
   sub-grid using the chosen sort.
 - **Highlight never-played** mode for the full Scorigami effect.
+- **Upcoming FIFAGami** — highlight in yellow the pairs that have *never* met but have a
+  scheduled fixture (e.g. first-ever meetings at the 2026 World Cup). They drop off automatically
+  once the match is played.
+- **Timeline scrubber** — drag through the years and watch the grid fill in; empty cells are
+  matchups that hadn't happened *yet*. (First pass: a team that didn't exist in a given year just
+  shows as not-yet-met, rather than being greyed out.)
 - **Include defunct teams** (advanced) — adds historical sides with no single modern successor
   (Yugoslavia, Czechoslovakia, East Germany / German DR, the Saar, South Vietnam, South Yemen…).
 - A live headline counts how many of the possible matchups in the current view have **never**
@@ -91,6 +97,7 @@ It downloads the sources into `data/raw/` (gitignored), then writes the artifact
 - `docs/data/matches_men.json`, `matches_women.json` — per-pair meeting detail (year, score,
   tournament), lazy-loaded by the site only when a cell is clicked
 - `docs/data/defunct.json` — the advanced defunct-teams layer
+- `docs/data/upcoming.json` — scheduled first-ever meetings (upcoming FIFAGami)
 
 Then serve the static site from `docs/`:
 
