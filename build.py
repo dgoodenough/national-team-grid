@@ -304,6 +304,15 @@ def aggregate(results_file: str, resolver: dict[str, str], name_to_id: dict[str,
         if ia is None or ib is None or ia == ib:
             continue
 
+        # A meeting only counts once it's actually been played. martj42 lists some fixtures in
+        # advance (e.g. upcoming World Cup matches) with no score yet; skip those so a scheduled
+        # game never lights up the grid as "played". Counting and detail use this same gate, so
+        # the grid/tooltip count can never disagree with the click-through match list.
+        try:
+            hs, as_ = int(row["home_score"]), int(row["away_score"])
+        except (ValueError, TypeError):
+            continue
+
         key = (min(ia, ib), max(ia, ib))
         bucket = defunct_pairs if (da or db) else member_pairs
         cell = bucket.get(key)
@@ -316,13 +325,8 @@ def aggregate(results_file: str, resolver: dict[str, str], name_to_id: dict[str,
                 cell[2] = yr if cell[2] is None else max(cell[2], yr)
 
         # Per-meeting detail (goals from the lower-id team's perspective).
-        try:
-            hs, as_ = int(row["home_score"]), int(row["away_score"])
-        except (ValueError, TypeError):
-            hs = as_ = None
-        if hs is not None and yr is not None:
-            g_lo, g_hi = (hs, as_) if ia <= ib else (as_, hs)
-            details.setdefault(key, []).append([yr, g_lo, g_hi, t_idx(row["tournament"].strip())])
+        g_lo, g_hi = (hs, as_) if ia <= ib else (as_, hs)
+        details.setdefault(key, []).append([yr, g_lo, g_hi, t_idx(row["tournament"].strip())])
 
     return member_pairs, defunct_pairs, unmatched, details, tournaments
 
@@ -403,7 +407,8 @@ def main() -> int:
 
     # Per-meeting detail, lazy-loaded by the frontend only when a cell is first clicked.
     def write_matches(gender: str, details: dict, tournaments: list) -> int:
-        pairs = {f"{lo},{hi}": sorted(v) for (lo, hi), v in details.items()}
+        ykey = lambda m: (m[0] is None, m[0] if m[0] is not None else 0)   # null years last
+        pairs = {f"{lo},{hi}": sorted(v, key=ykey) for (lo, hi), v in details.items()}
         (OUT / f"matches_{gender}.json").write_text(json.dumps({
             "tournaments": tournaments, "pairs": pairs,
         }, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")

@@ -8,7 +8,6 @@ const CONFED_COLOR = {
   AFC: "#e0524d", CAF: "#37b98a", CONCACAF: "#e6b54a",
   CONMEBOL: "#4f8fd0", OFC: "#b07a52", UEFA: "#9a6ad6",
 };
-const KEY = 100000;                  // pair-key multiplier (ids stay well below this)
 let MARGIN = 116;                    // px reserved for labels + confederation band (set in resize)
 const BAND = 13;                     // px confederation colour strip at outer edge
 
@@ -75,15 +74,17 @@ async function load() {
 }
 
 function buildPairMap(pairs, defunctPairs) {
+  // Keyed by "lo,hi" strings (matching matches_*.json). A numeric i*K+j key would collide
+  // because defunct ids start at 100000 (e.g. member 1 × defunct 100007 == member 2 × 7).
   const map = new Map();
-  for (const [i, j, c, fy, ly] of pairs) map.set(i * KEY + j, [c, fy, ly]);
-  for (const [i, j, c, fy, ly] of defunctPairs) map.set(i * KEY + j, [c, fy, ly]);
+  for (const [i, j, c, fy, ly] of pairs) map.set(`${i},${j}`, [c, fy, ly]);
+  for (const [i, j, c, fy, ly] of defunctPairs) map.set(`${i},${j}`, [c, fy, ly]);
   return map;
 }
 
 function lookup(a, b) {
   if (a === b) return null;
-  const k = a < b ? a * KEY + b : b * KEY + a;
+  const k = a < b ? `${a},${b}` : `${b},${a}`;
   return S.pairs[S.gender].get(k) || null;
 }
 
@@ -528,21 +529,26 @@ function renderDetailBody(card, A, B, data, gender) {
     return;
   }
   const aIsLo = A.id === lo;
-  let w = 0, d = 0, l = 0, gf = 0, ga = 0;
+  let w = 0, d = 0, l = 0, gf = 0, ga = 0, unknown = 0;
   const rows = [];
   for (let i = list.length - 1; i >= 0; i--) {          // newest first
     const [yr, glo, ghi, ti] = list[i];
+    const known = glo != null && ghi != null;
     const sa = aIsLo ? glo : ghi, sb = aIsLo ? ghi : glo;
-    gf += sa; ga += sb;
-    const res = sa > sb ? "w" : sa < sb ? "l" : "d";
-    if (res === "w") w++; else if (res === "l") l++; else d++;
-    rows.push(`<div class="mr ${res}"><span class="yr">${yr}</span>`
-      + `<span class="sc">${sa}–${sb}</span>`
+    let res = "u";
+    if (known) {
+      gf += sa; ga += sb;
+      res = sa > sb ? "w" : sa < sb ? "l" : "d";
+      if (res === "w") w++; else if (res === "l") l++; else d++;
+    } else { unknown++; }
+    rows.push(`<div class="mr ${res}"><span class="yr">${yr == null ? "?" : yr}</span>`
+      + `<span class="sc">${known ? `${sa}–${sb}` : "—"}</span>`
       + `<span class="tn" title="${T[ti] || ""}">${T[ti] || ""}</span></div>`);
   }
   db.innerHTML =
     `<div class="sum"><b>${list.length}</b> meeting${list.length === 1 ? "" : "s"} · `
-    + `<span class="w">${w}W</span> <span class="d">${d}D</span> <span class="l">${l}L</span> · `
+    + `<span class="w">${w}W</span> <span class="d">${d}D</span> <span class="l">${l}L</span>`
+    + (unknown ? ` <span class="dim">+${unknown}?</span>` : "") + ` · `
     + `<span class="gd">${gf}–${ga}</span> <span class="dim">(${A.name})</span></div>`
     + `<div class="mlist">${rows.join("")}</div>`;
 }
