@@ -132,6 +132,37 @@ button.wide:hover { border-color: var(--accent); }
   color: var(--ink-dim); background: var(--bg); font-size: .95rem;
 }
 
+/* single-team focus view (one team manually selected) */
+#canvas-wrap.focus #zoom-ctl { display: none; }
+#teamfocus[hidden] { display: none; }
+#teamfocus {
+  position: absolute; inset: 0; z-index: 7; background: var(--bg);
+  display: flex; flex-direction: column;
+}
+#teamfocus .tf-head { flex: none; padding: 14px 20px; border-bottom: 1px solid var(--line); }
+.tf-title { font-weight: 700; font-size: 1.05rem; }
+.tf-sum { color: var(--ink-dim); font-size: .85rem; margin-top: 4px; }
+.tf-sum .never { color: var(--never-hi); }
+.tf-list { overflow-y: auto; padding: 6px 12px 16px; }
+.tf-row {
+  display: grid; grid-template-columns: 12px minmax(0,1fr) 100px 40px 46px; gap: 11px;
+  align-items: center; width: 100%; background: none; border: none; color: var(--ink);
+  text-align: left; cursor: pointer; padding: 5px 8px; border-radius: 6px; font-size: .85rem;
+}
+.tf-row:hover { background: var(--panel-2); }
+.tf-dot { width: 11px; height: 11px; border-radius: 3px; }
+.tf-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tf-bar { height: 8px; background: var(--panel-2); border-radius: 4px; overflow: hidden; }
+.tf-bar > span { display: block; height: 100%; background: var(--accent); }
+.tf-n { text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
+.tf-last { text-align: right; color: var(--ink-dim); font-size: .72rem; }
+.tf-row.none { opacity: .5; }
+.tf-row.none .tf-n { color: var(--ink-dim); font-weight: 400; }
+.tf-sep {
+  color: var(--ink-dim); font-size: .72rem; text-transform: uppercase; letter-spacing: .6px;
+  margin: 14px 8px 4px;
+}
+
 /* match-detail card */
 #detail[hidden] { display: none; }   /* id selector would otherwise beat [hidden] */
 #detail {

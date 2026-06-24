@@ -38,8 +38,9 @@ have simply never met.
   the head-to-head W–D–L record. The per-match detail is loaded on demand on the first click, so it
   doesn't slow the initial grid.
 - **Hover** any cell for a quick tooltip (meetings + first/last year).
-- **Manual team checklist** — search and tick any set of teams to build a custom sub-grid
-  (e.g. just the 2026 World Cup hosts, or your own rivalries).
+- **Manual team checklist** — tick **one** team to see all of its matchups ranked from
+  most- to least-played (with a *never-met* tally); tick **two or more** to build a custom
+  sub-grid using the chosen sort.
 - **Highlight never-played** mode for the full Scorigami effect.
 - **Include defunct teams** (advanced) — adds historical sides with no single modern successor
   (Yugoslavia, Czechoslovakia, East Germany / German DR, the Saar, South Vietnam, South Yemen…).

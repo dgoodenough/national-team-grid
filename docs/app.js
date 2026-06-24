@@ -38,6 +38,7 @@ const S = {
 const canvas = document.getElementById("grid");
 const ctx = canvas.getContext("2d");
 const tooltip = document.getElementById("tooltip");
+const canvasWrap = document.getElementById("canvas-wrap");
 let DPR = window.devicePixelRatio || 1;
 
 /* ---------- data loading ---------- */
@@ -93,6 +94,18 @@ function rankOf(m) {
 }
 
 function recompute(fit) {
+  closeDetail();
+
+  // One team manually selected -> show that team's matchups ranked most-to-least played,
+  // instead of a useless 1x1 grid. Two or more -> fall back to a normal sub-grid.
+  if (S.manual.size === 1) {
+    renderTeamFocus([...S.manual][0]);
+    canvasWrap.classList.add("focus");
+    return;
+  }
+  document.getElementById("teamfocus").hidden = true;
+  canvasWrap.classList.remove("focus");
+
   let base = S.members.slice();
   if (S.includeDefunct) base = base.concat(S.defunct.members);
 
@@ -116,7 +129,6 @@ function recompute(fit) {
   });
 
   S.order = active.map(m => m.id);
-  closeDetail();                 // a view change can make the open card's pair stale
   if (fit) fitView(); else clampPan();
   updateStats();
   const lm = document.getElementById("legend-max");
@@ -185,6 +197,15 @@ function resize() {
 }
 
 function draw() {
+  // Keep the backing store matched to the element's CSS size. If the layout shifts after the
+  // last resize() — e.g. the headline grows when data loads, or a scrollbar appears — the
+  // canvas ends up shorter than its backing store and the uncleared strip shows stale pixels
+  // ("artifacts at the bottom") that persist across redraws/zooms. Re-sync if mismatched.
+  const dpr = window.devicePixelRatio || 1;
+  if (canvas.width !== Math.floor(canvas.clientWidth * dpr) ||
+      canvas.height !== Math.floor(canvas.clientHeight * dpr)) {
+    resize();
+  }
   const n = S.order.length;
   const W = canvas.clientWidth, H = canvas.clientHeight;
   ctx.clearRect(0, 0, W, H);
@@ -471,9 +492,11 @@ async function ensureMatches(gender) {
 
 function closeDetail() { document.getElementById("detail").hidden = true; }
 
-function openDetail(rc) {
-  const A = S.byId.get(S.order[rc.r]);
-  const B = S.byId.get(S.order[rc.c]);
+function openDetail(rc) { openPair(S.order[rc.r], S.order[rc.c]); }
+
+function openPair(aId, bId) {
+  const A = S.byId.get(aId);
+  const B = S.byId.get(bId);
   const card = document.getElementById("detail");
   if (!A || !B || A.id === B.id) { closeDetail(); return; }
   const gender = S.gender;
@@ -522,6 +545,53 @@ function renderDetailBody(card, A, B, data, gender) {
     + `<span class="w">${w}W</span> <span class="d">${d}D</span> <span class="l">${l}L</span> · `
     + `<span class="gd">${gf}–${ga}</span> <span class="dim">(${A.name})</span></div>`
     + `<div class="mlist">${rows.join("")}</div>`;
+}
+
+/* ---------- single-team focus (one team manually selected) ---------- */
+function renderTeamFocus(teamId) {
+  const team = S.byId.get(teamId);
+  const panel = document.getElementById("teamfocus");
+  if (!team) { panel.hidden = true; return; }
+
+  let pool = S.members.filter(m => m.id !== teamId);
+  if (S.includeDefunct) pool = pool.concat(S.defunct.members.filter(m => m.id !== teamId));
+  const rows = pool.map(o => {
+    const p = lookup(teamId, o.id);
+    return { o, count: p ? p[0] : 0, last: p ? p[2] : null };
+  }).sort((a, b) => b.count - a.count || a.o.name.localeCompare(b.o.name));
+
+  const played = rows.filter(r => r.count > 0);
+  const never = rows.filter(r => r.count === 0);
+  const maxC = played.length ? played[0].count : 1;
+  const gLabel = S.gender === "men" ? "men's" : "women's";
+
+  const row = r =>
+    `<button class="tf-row${r.count ? "" : " none"}" data-opp="${r.o.id}">`
+    + `<span class="tf-dot" style="background:${CONFED_COLOR[r.o.confed] || "#888"}"></span>`
+    + `<span class="tf-name">${r.o.name}</span>`
+    + `<span class="tf-bar"><span style="width:${Math.round(100 * r.count / maxC)}%"></span></span>`
+    + `<span class="tf-n">${r.count || "—"}</span>`
+    + `<span class="tf-last">${r.last || ""}</span></button>`;
+
+  panel.innerHTML =
+    `<div class="tf-head">
+       <div class="tf-title">${team.name} — matchups, most to least played</div>
+       <div class="tf-sum">Played <b>${played.length}</b> of ${rows.length} opponents ·
+         <b class="never">${never.length}</b> never met · ${gLabel}</div>
+     </div>
+     <div class="tf-list">${played.map(row).join("")}`
+    + (never.length ? `<div class="tf-sep">Never played (${never.length})</div>` : "")
+    + `${never.map(row).join("")}</div>`;
+  panel.onclick = e => {
+    const b = e.target.closest(".tf-row");
+    if (b) openPair(teamId, +b.dataset.opp);
+  };
+  panel.hidden = false;
+
+  document.getElementById("headline").innerHTML =
+    `<span class="big">${never.length}</span>`
+    + `<span class="rest">opponents <b>${team.name}</b> has never played `
+    + `(${gLabel}) — they've met <b>${played.length}</b> of ${rows.length} possible.</span>`;
 }
 
 /* ---------- controls ---------- */
