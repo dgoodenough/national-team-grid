@@ -705,13 +705,31 @@ function updateStats() {
     for (let j = i + 1; j < n; j++)
       if (lookup(S.order[i], S.order[j])) met++;
   const never = total - met;
-  const pct = total ? (100 * met / total) : 0;
-  const scope = (S.manual.size || S.showConfeds.size < S.confedOrder.length) ? "in this view" : "";
-  document.getElementById("headline").innerHTML =
-    `<span class="big">${never.toLocaleString()}</span>`
-    + `<span class="rest"><b>${S.gender === "men" ? "men's" : "women's"}</b> matchups have `
-    + `<b>never</b> been played ${scope} — just <b>${pct.toFixed(1)}%</b> of the `
-    + `${total.toLocaleString()} possible pairings have ever happened.</span>`;
+  const g = S.gender === "men" ? "men's" : "women's";
+  const scope = (S.manual.size || S.showConfeds.size < S.confedOrder.length) ? " in this view" : "";
+  const headline = document.getElementById("headline");
+  const pl = (k, w) => (k === 1 ? w : w + "s");
+
+  let html;
+  if (total === 0) {                       // fewer than two teams to compare
+    headline.classList.remove("allplayed");
+    html = `<span class="big">—</span>`
+      + `<span class="rest">Pick at least two teams or confederations to compare.</span>`;
+  } else if (never === 0) {                 // every possible matchup has happened
+    headline.classList.add("allplayed");
+    html = `<span class="big">100%</span>`
+      + `<span class="rest">every one of the ${total.toLocaleString()} possible <b>${g}</b> `
+      + `${pl(total, "matchup")}${scope} has been played — no unplayed pairings here.</span>`;
+  } else {
+    headline.classList.remove("allplayed");
+    const pct = 100 * met / total;
+    html = `<span class="big">${never.toLocaleString()}</span>`
+      + `<span class="rest"><b>${g}</b> ${pl(never, "matchup")} ${never === 1 ? "has" : "have"} `
+      + `<b>never</b> been played${scope} — just <b>${pct.toFixed(1)}%</b> of the `
+      + `${total.toLocaleString()} possible ${pl(total, "pairing")} `
+      + `${total === 1 ? "has" : "have"} ever happened.</span>`;
+  }
+  headline.innerHTML = html;
 }
 
 /* ---------- boot ---------- */
