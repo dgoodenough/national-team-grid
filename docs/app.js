@@ -19,6 +19,7 @@ const S = {
   confedOrder: [],
   pairs: { men: new Map(), women: new Map() },
   maxCount: { men: 1, women: 1 },
+  matches: { men: null, women: null },   // per-meeting detail, lazy-loaded on first click
   meta: {},
   // view options
   gender: "men",
@@ -115,6 +116,7 @@ function recompute(fit) {
   });
 
   S.order = active.map(m => m.id);
+  closeDetail();                 // a view change can make the open card's pair stale
   if (fit) fitView(); else clampPan();
   updateStats();
   const lm = document.getElementById("legend-max");
@@ -265,10 +267,12 @@ function shortLabel(m, cell) {
 }
 
 function drawLabels(n, ox, oy, cell, r0, r1, c0, c1) {
-  if (cell < 8) return;
-  const fs = Math.min(13, Math.max(8, cell - 4));
+  if (cell < 5) return;
+  // Thin the labels so their on-screen spacing stays legible (>= ~14px) at any zoom —
+  // otherwise codes pile on top of each other into gibberish at low zoom.
+  const step = Math.max(1, Math.round(14 / cell));
+  const fs = Math.min(13, Math.max(8, cell - 3));
   ctx.font = `${fs}px -apple-system, "Segoe UI", sans-serif`;
-  ctx.fillStyle = getCss("--ink");
 
   // Keep labels clear of the confederation colour band (the outer BAND-px strip).
   const edge = MARGIN - BAND - 4;          // inner edge of the band
@@ -277,6 +281,7 @@ function drawLabels(n, ox, oy, cell, r0, r1, c0, c1) {
   // rows (left margin, right-aligned up to the band)
   ctx.textAlign = "right"; ctx.textBaseline = "middle";
   for (let r = r0; r < r1; r++) {
+    if (r % step) continue;
     const m = S.byId.get(S.order[r]);
     ctx.fillStyle = m.defunct ? getCss("--ink-dim") : getCss("--ink");
     ctx.fillText(shortLabel(m, cell), edge, oy + r * cell + cell / 2, maxLen);
@@ -284,6 +289,7 @@ function drawLabels(n, ox, oy, cell, r0, r1, c0, c1) {
   // cols (top margin, rotated, starting at the band edge)
   ctx.textAlign = "left"; ctx.textBaseline = "middle";
   for (let c = c0; c < c1; c++) {
+    if (c % step) continue;
     const m = S.byId.get(S.order[c]);
     const x = ox + c * cell + cell / 2;
     ctx.save();
@@ -369,18 +375,25 @@ function showTooltip(cellRC, mx, my) {
 }
 
 function setupInteraction() {
-  let dragging = false, moved = false, lastX = 0, lastY = 0;
+  let dragging = false, downX = 0, downY = 0, lastX = 0, lastY = 0;
 
   canvas.addEventListener("mousedown", e => {
-    dragging = true; moved = false; lastX = e.clientX; lastY = e.clientY;
+    dragging = true; downX = lastX = e.clientX; downY = lastY = e.clientY;
     canvas.classList.add("panning");
   });
-  window.addEventListener("mouseup", () => { dragging = false; canvas.classList.remove("panning"); });
+  window.addEventListener("mouseup", e => {
+    if (dragging && Math.hypot(e.clientX - downX, e.clientY - downY) < 4) {
+      // treat as a click, not a pan -> open match detail for that cell
+      const r = canvas.getBoundingClientRect();
+      const rc = cellAt(e.clientX - r.left, e.clientY - r.top);
+      if (rc) openDetail(rc); else closeDetail();
+    }
+    dragging = false; canvas.classList.remove("panning");
+  });
   window.addEventListener("mousemove", e => {
     const r = canvas.getBoundingClientRect();
     const mx = e.clientX - r.left, my = e.clientY - r.top;
     if (dragging) {
-      moved = true;
       S.tx += e.clientX - lastX; S.ty += e.clientY - lastY;
       lastX = e.clientX; lastY = e.clientY;
       clampPan();
@@ -409,6 +422,69 @@ function setupInteraction() {
     clampPan();
     draw();
   }, { passive: false });
+}
+
+/* ---------- match-detail card (lazy-loaded) ---------- */
+async function ensureMatches(gender) {
+  if (!S.matches[gender]) {
+    S.matches[gender] = await fetch(`data/matches_${gender}.json`).then(r => r.json());
+  }
+  return S.matches[gender];
+}
+
+function closeDetail() { document.getElementById("detail").hidden = true; }
+
+function openDetail(rc) {
+  const A = S.byId.get(S.order[rc.r]);
+  const B = S.byId.get(S.order[rc.c]);
+  const card = document.getElementById("detail");
+  if (!A || !B || A.id === B.id) { closeDetail(); return; }
+  const gender = S.gender;
+  card.hidden = false;
+  card.innerHTML =
+    `<div class="dh"><div class="dt">${A.name} <span class="vs">vs</span> ${B.name}</div>
+     <button class="dx" aria-label="Close" title="Close">&times;</button></div>
+     <div class="db dim">Loading match history…</div>`;
+  card.querySelector(".dx").onclick = closeDetail;
+  // token guards against a slow fetch resolving after the user clicked elsewhere
+  const token = (card.dataset.token = String(Date.now()));
+  ensureMatches(gender)
+    .then(data => { if (card.dataset.token === token) renderDetailBody(card, A, B, data, gender); })
+    .catch(() => {
+      const db = card.querySelector(".db");
+      if (db && card.dataset.token === token) db.textContent = "Couldn't load match details.";
+    });
+}
+
+function renderDetailBody(card, A, B, data, gender) {
+  const lo = Math.min(A.id, B.id), hi = Math.max(A.id, B.id);
+  const list = data.pairs[`${lo},${hi}`] || [];
+  const T = data.tournaments;
+  const db = card.querySelector(".db");
+  if (!db) return;
+  db.classList.remove("dim");
+  if (!list.length) {
+    db.innerHTML = `<div class="never">Never played${gender === "women" ? " (women's)" : ""}.</div>`;
+    return;
+  }
+  const aIsLo = A.id === lo;
+  let w = 0, d = 0, l = 0, gf = 0, ga = 0;
+  const rows = [];
+  for (let i = list.length - 1; i >= 0; i--) {          // newest first
+    const [yr, glo, ghi, ti] = list[i];
+    const sa = aIsLo ? glo : ghi, sb = aIsLo ? ghi : glo;
+    gf += sa; ga += sb;
+    const res = sa > sb ? "w" : sa < sb ? "l" : "d";
+    if (res === "w") w++; else if (res === "l") l++; else d++;
+    rows.push(`<div class="mr ${res}"><span class="yr">${yr}</span>`
+      + `<span class="sc">${sa}–${sb}</span>`
+      + `<span class="tn" title="${T[ti] || ""}">${T[ti] || ""}</span></div>`);
+  }
+  db.innerHTML =
+    `<div class="sum"><b>${list.length}</b> meeting${list.length === 1 ? "" : "s"} · `
+    + `<span class="w">${w}W</span> <span class="d">${d}D</span> <span class="l">${l}L</span> · `
+    + `<span class="gd">${gf}–${ga}</span> <span class="dim">(${A.name})</span></div>`
+    + `<div class="mlist">${rows.join("")}</div>`;
 }
 
 /* ---------- controls ---------- */
@@ -540,6 +616,7 @@ function updateStats() {
 }
 
 /* ---------- boot ---------- */
+window.addEventListener("keydown", e => { if (e.key === "Escape") closeDetail(); });
 window.addEventListener("resize", () => { resize(); clampPan(); draw(); });
 resize();
 setupInteraction();

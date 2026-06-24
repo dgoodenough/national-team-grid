@@ -132,6 +132,42 @@ button.wide:hover { border-color: var(--accent); }
   color: var(--ink-dim); background: var(--bg); font-size: .95rem;
 }
 
+/* match-detail card */
+#detail[hidden] { display: none; }   /* id selector would otherwise beat [hidden] */
+#detail {
+  position: absolute; top: 14px; right: 14px; z-index: 8;
+  width: 330px; max-width: calc(100% - 28px); max-height: calc(100% - 28px);
+  display: flex; flex-direction: column;
+  background: rgba(16,20,30,.97); border: 1px solid var(--line); border-radius: 12px;
+  box-shadow: 0 12px 44px rgba(0,0,0,.6); overflow: hidden;
+}
+#detail .dh {
+  display: flex; align-items: flex-start; gap: 8px; padding: 12px 14px;
+  border-bottom: 1px solid var(--line); flex: none;
+}
+#detail .dt { flex: 1; font-weight: 700; font-size: .95rem; line-height: 1.3; }
+#detail .dt .vs { color: var(--ink-dim); font-weight: 400; }
+#detail .dx {
+  background: none; border: none; color: var(--ink-dim); font-size: 1.5rem; line-height: .8;
+  cursor: pointer; padding: 0 2px;
+}
+#detail .dx:hover { color: var(--ink); }
+#detail .db { overflow-y: auto; padding: 12px 14px 14px; }
+#detail .db.dim { color: var(--ink-dim); }
+#detail .sum { font-size: .8rem; margin-bottom: 8px; color: var(--ink-dim); }
+#detail .sum b { color: var(--ink); font-size: 1.05rem; }
+#detail .sum .w { color: #46c46a; } #detail .sum .l { color: #e0524d; }
+#detail .never { color: var(--never-hi); font-weight: 600; padding: 6px 0; }
+#detail .mlist { display: flex; flex-direction: column; }
+#detail .mr {
+  display: grid; grid-template-columns: 40px 50px 1fr; gap: 8px; align-items: baseline;
+  padding: 3px 0; font-size: .78rem; border-top: 1px solid rgba(255,255,255,.05);
+}
+#detail .mr .yr { color: var(--ink-dim); font-variant-numeric: tabular-nums; }
+#detail .mr .sc { font-weight: 700; font-variant-numeric: tabular-nums; }
+#detail .mr.w .sc { color: #46c46a; } #detail .mr.l .sc { color: #e0524d; }
+#detail .mr .tn { color: var(--ink-dim); font-size: .72rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
 @media (max-width: 720px) {
   #app { flex-direction: column; }
   #panel { width: 100%; min-width: 0; height: auto; max-height: 45vh; border-right: none; border-bottom: 1px solid var(--line); }

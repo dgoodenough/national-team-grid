@@ -269,10 +269,22 @@ def canonical(name: str, resolver: dict[str, str]) -> str:
 
 def aggregate(results_file: str, resolver: dict[str, str], name_to_id: dict[str, int],
               defunct_ids: dict[str, int]):
-    """Aggregate pairwise meetings. Returns (member_pairs, defunct_pairs, unmatched_counter)."""
+    """Aggregate pairwise meetings.
+    Returns (member_pairs, defunct_pairs, unmatched, details, tournaments).
+    `details[(lo, hi)]` is a per-meeting list of [year, goals_lo, goals_hi, tournament_idx]
+    (goals from the perspective of the lower-id team); `tournaments` is the interning table."""
     member_pairs: dict[tuple[int, int], list] = {}
     defunct_pairs: dict[tuple[int, int], list] = {}
     unmatched: dict[str, int] = {}
+    details: dict[tuple[int, int], list] = {}
+    tournaments: list[str] = []
+    tindex: dict[str, int] = {}
+
+    def t_idx(name: str) -> int:
+        if name not in tindex:
+            tindex[name] = len(tournaments)
+            tournaments.append(name)
+        return tindex[name]
 
     for row in read_csv(RAW / results_file):
         ht = canonical(row["home_team"], resolver)
@@ -302,7 +314,17 @@ def aggregate(results_file: str, resolver: dict[str, str], name_to_id: dict[str,
             if yr is not None:
                 cell[1] = yr if cell[1] is None else min(cell[1], yr)
                 cell[2] = yr if cell[2] is None else max(cell[2], yr)
-    return member_pairs, defunct_pairs, unmatched
+
+        # Per-meeting detail (goals from the lower-id team's perspective).
+        try:
+            hs, as_ = int(row["home_score"]), int(row["away_score"])
+        except (ValueError, TypeError):
+            hs = as_ = None
+        if hs is not None and yr is not None:
+            g_lo, g_hi = (hs, as_) if ia <= ib else (as_, hs)
+            details.setdefault(key, []).append([yr, g_lo, g_hi, t_idx(row["tournament"].strip())])
+
+    return member_pairs, defunct_pairs, unmatched, details, tournaments
 
 
 def pairs_to_json(pairs: dict[tuple[int, int], list]) -> tuple[list, int]:
@@ -329,8 +351,10 @@ def main() -> int:
     defunct_ids = {name: 100000 + i for i, name in enumerate(defunct_present)}
 
     log("[4/5] Aggregating pairwise meetings...")
-    men_pairs, men_def, men_unmatched = aggregate("results_men.csv", resolver, name_to_id, defunct_ids)
-    wom_pairs, wom_def, wom_unmatched = aggregate("results_women.csv", resolver, name_to_id, defunct_ids)
+    men_pairs, men_def, men_unmatched, men_details, men_tourn = aggregate(
+        "results_men.csv", resolver, name_to_id, defunct_ids)
+    wom_pairs, wom_def, wom_unmatched, wom_details, wom_tourn = aggregate(
+        "results_women.csv", resolver, name_to_id, defunct_ids)
 
     men_json, men_max = pairs_to_json(men_pairs)
     wom_json, wom_max = pairs_to_json(wom_pairs)
@@ -377,6 +401,16 @@ def main() -> int:
         "pairs_women": wom_def_json,
     }, ensure_ascii=False), encoding="utf-8")
 
+    # Per-meeting detail, lazy-loaded by the frontend only when a cell is first clicked.
+    def write_matches(gender: str, details: dict, tournaments: list) -> int:
+        pairs = {f"{lo},{hi}": sorted(v) for (lo, hi), v in details.items()}
+        (OUT / f"matches_{gender}.json").write_text(json.dumps({
+            "tournaments": tournaments, "pairs": pairs,
+        }, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+        return sum(len(v) for v in details.values())
+    n_men = write_matches("men", men_details, men_tourn)
+    n_wom = write_matches("women", wom_details, wom_tourn)
+
     # --- Report ---
     log("")
     log(f"  members:          {len(members)}")
@@ -386,6 +420,10 @@ def main() -> int:
     log(f"  match data through:  men {data_through['men']}  |  women {data_through['women']}")
     log(f"  ranking (men):    {rmeta['ranking_men']}")
     log(f"  ranking (women):  {rmeta['ranking_women']}")
+    mm_kb = (OUT / "matches_men.json").stat().st_size / 1024
+    mw_kb = (OUT / "matches_women.json").stat().st_size / 1024
+    log(f"  match detail (lazy-loaded on click): "
+        f"men {n_men} meetings / {mm_kb:.0f} KB, women {n_wom} / {mw_kb:.0f} KB")
 
     # Sanity asserts
     assert len(members) >= 200, "expected ~210 current members"

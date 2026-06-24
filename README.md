@@ -34,6 +34,10 @@ have simply never met.
   *FIFA rank, global* (straight down the line, confederations interleave into a colour stripe); or
   *Alphabetical*.
 - **Filter by confederation** — show one, several, or all.
+- **Click any cell** — see every meeting between those two teams (year, score, tournament) plus
+  the head-to-head W–D–L record. The per-match detail is loaded on demand on the first click, so it
+  doesn't slow the initial grid.
+- **Hover** any cell for a quick tooltip (meetings + first/last year).
 - **Manual team checklist** — search and tick any set of teams to build a custom sub-grid
   (e.g. just the 2026 World Cup hosts, or your own rivalries).
 - **Highlight never-played** mode for the full Scorigami effect.
@@ -83,6 +87,8 @@ It downloads the sources into `data/raw/` (gitignored), then writes the artifact
 
 - `docs/data/members.json` — ordered members with confederation + men's/women's rank + data vintage
 - `docs/data/matrix_men.json`, `matrix_women.json` — sparse `[i, j, meetings, firstYear, lastYear]`
+- `docs/data/matches_men.json`, `matches_women.json` — per-pair meeting detail (year, score,
+  tournament), lazy-loaded by the site only when a cell is clicked
 - `docs/data/defunct.json` — the advanced defunct-teams layer
 
 Then serve the static site from `docs/`:
