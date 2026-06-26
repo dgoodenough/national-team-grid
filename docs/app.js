@@ -662,6 +662,18 @@ function renderTeamFocus(teamId) {
     + `(${gLabel}) — they've met <b>${played.length}</b> of ${rows.length} possible.</span>`;
 }
 
+/* On mobile the controls sit below the grid, so move the timeline scrubber up into the stage
+   (right under the headline, above the grid) so you can scrub and see the grid change at once. */
+const _mqMobile = window.matchMedia("(max-width: 720px)");
+let _timelineHome = null;
+function placeTimeline() {
+  const timeline = document.getElementById("timeline");
+  if (!timeline) return;
+  if (!_timelineHome) _timelineHome = { parent: timeline.parentNode, next: timeline.nextSibling };
+  if (_mqMobile.matches) document.getElementById("timeline-slot").appendChild(timeline);
+  else _timelineHome.parent.insertBefore(timeline, _timelineHome.next);
+}
+
 /* ---------- controls ---------- */
 function buildControls() {
   // gender
@@ -746,6 +758,9 @@ function buildControls() {
     + `<b>${fmt(dt.women)}</b> (women) · rankings ${S.meta.rankingMen || "—"}, `
     + `${S.meta.rankingWomen || "—"}.`;
   document.getElementById("legend-max").textContent = `1 → ${S.maxCount[S.gender]}`;
+
+  placeTimeline();
+  _mqMobile.addEventListener("change", () => { placeTimeline(); resize(); clampPan(); draw(); });
 }
 
 function zoomBy(factor) {

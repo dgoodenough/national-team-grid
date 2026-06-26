@@ -45,10 +45,10 @@
       <label class="check"><input type="checkbox" id="opt-defunct" /> Include defunct teams <span class="hint">(advanced)</span></label>
     </section>
 
-    <section class="ctl">
+    <section class="ctl" id="timeline">
       <div class="row"><span class="lbl">Timeline</span><span id="year-label" class="hint"></span></div>
-      <input type="range" id="year-scrub" min="1872" max="2026" step="1" />
-      <p class="hint">Scrub to watch the grid fill in — empty cells are matchups that hadn't happened yet.</p>
+      <input type="range" id="year-scrub" min="1872" max="2026" step="1" value="2026" autocomplete="off" />
+      <p class="hint timeline-help">Scrub to watch the grid fill in — empty cells are matchups that hadn't happened yet.</p>
     </section>
 
     <section class="ctl">
@@ -81,6 +81,7 @@
 
   <main id="stage">
     <div id="headline"></div>
+    <div id="timeline-slot"></div>
     <div id="canvas-wrap">
       <canvas id="grid"></canvas>
       <div id="zoom-ctl">

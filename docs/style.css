@@ -223,4 +223,12 @@ button.wide:hover { border-color: var(--accent); }
   #zoom-ctl button#zoom-fit { width: auto; padding: 0 14px; }
   #detail { width: auto; left: 12px; right: 12px; max-height: 78%; }
   .ctl { margin-top: 22px; }                      /* a touch more breathing room */
+
+  /* Timeline scrubber moved up into the stage (under the headline, above the grid) so it's
+     visible while you scrub. Compact bar; the long help line is hidden here. */
+  #timeline-slot #timeline {
+    margin: 0; padding: 8px 16px 10px; border-bottom: 1px solid var(--line); background: var(--bg);
+  }
+  #timeline-slot #timeline .row { margin-bottom: 6px; }
+  #timeline-slot .timeline-help { display: none; }
 }
