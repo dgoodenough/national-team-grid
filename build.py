@@ -134,8 +134,18 @@ def download_sources(force: bool = False) -> None:
         ua = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
               "(KHTML, like Gecko) Chrome/124.0 Safari/537.36")
         req = urllib.request.Request(url, headers={"User-Agent": ua})
-        with urllib.request.urlopen(req, timeout=60) as r:
-            dest.write_bytes(r.read())
+        try:
+            with urllib.request.urlopen(req, timeout=60) as r:
+                dest.write_bytes(r.read())
+        except Exception as e:  # noqa: BLE001
+            # FotMob rankings are best-effort (load_ranking falls back to last-known/cnc8);
+            # for anything else keep a cached copy if we have one, else fail hard.
+            if fname.startswith("fotmob"):
+                log(f"  WARN: {fname} fetch failed ({e}); falling back")
+            elif dest.exists():
+                log(f"  WARN: {fname} fetch failed ({e}); using cached copy")
+            else:
+                raise
 
 
 def read_csv(path: Path, encoding: str = "utf-8") -> list[dict]:
@@ -179,6 +189,19 @@ def load_ranking(gender: str) -> tuple[dict[str, int], str | None]:
             return ranks, f"FotMob/FIFA {gender}'s ranking{label} ({len(ranks)} teams)"
         except Exception as e:  # noqa: BLE001
             log(f"  WARN: could not parse FotMob {gender} ranking ({e})")
+
+    # FotMob unavailable (e.g. blocked in CI): keep the last-known ranks from the previously
+    # built members.json so an auto-refresh never silently downgrades the ordering.
+    prev = OUT / "members.json"
+    if prev.exists():
+        try:
+            data = json.loads(prev.read_text(encoding="utf-8"))
+            key = "mens_rank" if gender == "men" else "womens_rank"
+            ranks = {m["name"]: m[key] for m in data.get("members", []) if m.get(key)}
+            if ranks:
+                return ranks, f"last build's ranking ({len(ranks)} teams)"
+        except Exception:  # noqa: BLE001
+            pass
     return {}, None
 
 
@@ -421,13 +444,12 @@ def main() -> int:
     n_men = write_matches("men", men_details, men_tourn)
     n_wom = write_matches("women", wom_details, wom_tourn)
 
-    # Upcoming FIFAGami: a scheduled (future-dated) fixture between members who have NEVER met.
-    today = date.today().isoformat()
-
+    # Upcoming FIFAGami: scheduled fixtures between members who have NEVER met. We emit every
+    # such fixture (with its date) and let the client filter by the browser's current date, so
+    # the highlight stays accurate between rebuilds. Sorted soonest-first.
     def upcoming_gami(upcoming: dict, played: dict) -> list:
-        out = [[lo, hi, d, t] for (lo, hi), (d, t) in upcoming.items()
-               if (lo, hi) not in played and d >= today]
-        return sorted(out)
+        out = [[lo, hi, d, t] for (lo, hi), (d, t) in upcoming.items() if (lo, hi) not in played]
+        return sorted(out, key=lambda r: r[2])
     upcoming_json = {"men": upcoming_gami(men_up, men_pairs),
                      "women": upcoming_gami(wom_up, wom_pairs)}
     (OUT / "upcoming.json").write_text(json.dumps(upcoming_json, ensure_ascii=False),

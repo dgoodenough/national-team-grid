@@ -30,6 +30,7 @@ const S = {
   includeDefunct: false,
   highlightNever: false,
   showUpcoming: false,               // highlight upcoming first meetings in yellow
+  today: "",                         // client's current date (YYYY-MM-DD), set on load
   year: null,                        // scrubber: show grid as of this year (null = present)
   maxYear: 2026,
   // ordered ids currently displayed
@@ -78,6 +79,9 @@ async function load() {
       S.upcoming[g].set(`${i},${j}`, [date, tourn]);
     }
   }
+  const d = new Date();   // the machine's current date drives which fixtures are still upcoming
+  S.today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
   // latest played year across both archives drives the scrubber's right end.
   let maxY = 1900;
   for (const mx of [mMen, mWomen]) for (const p of mx.pairs) if (p[4] > maxY) maxY = p[4];
@@ -124,6 +128,9 @@ function countAsOf(a, b) {
 }
 
 function upcomingInfo(a, b) { return S.upcoming[S.gender].get(pairKey(a, b)) || null; }
+
+// A scheduled first meeting still in the future (or today) per the client's clock.
+function isUpcoming(a, b) { const u = upcomingInfo(a, b); return !!u && u[0] >= S.today; }
 
 // Build per-pair sorted meeting-year arrays from the (lazy-loaded) match detail.
 async function ensureYears(gender) {
@@ -287,7 +294,7 @@ function draw() {
       if (a === b) col = diag;
       else {
         const cnt = countAsOf(a, b);
-        if (!cnt && S.showUpcoming && atPresent && upcomingInfo(a, b)) col = upcomingCol;
+        if (!cnt && S.showUpcoming && atPresent && isUpcoming(a, b)) col = upcomingCol;
         else col = cellColor(cnt);
       }
       ctx.fillStyle = col;
@@ -442,7 +449,9 @@ function showTooltip(cellRC, mx, my) {
       meetings = `<span class="n">${cnt}</span> meeting${cnt === 1 ? "" : "s"}${asOf}`
         + `<div class="dim">${present() ? `${p[1]}–${p[2]}` : `since ${p[1]}`} · ${S.gender}'s</div>`;
     } else if (up && present()) {
-      meetings = `<span class="n" style="color:var(--upcoming)">first meeting coming up</span>`
+      const future = up[0] >= S.today;
+      meetings = `<span class="n" style="color:var(--upcoming)">`
+        + `${future ? "first meeting coming up" : "first meeting — result pending"}</span>`
         + `<div class="dim">${up[0]} · ${up[1]}</div>`;
     } else {
       meetings = `<span class="n">never played${asOf}</span><div class="dim">${S.gender}'s internationals</div>`;
@@ -684,6 +693,7 @@ function buildControls() {
       S.gender = btn.dataset.gender;
       buildTeamList();           // refresh the rank shown per gender
       updateUpcomingCount();
+      renderUpcomingList();
       if (!present()) ensureYears(S.gender).then(draw);
       recompute(false);
     });
@@ -721,6 +731,7 @@ function buildControls() {
   document.getElementById("opt-upcoming").onchange = e => { S.showUpcoming = e.target.checked; draw(); };
   document.getElementById("opt-defunct").onchange = e => { S.includeDefunct = e.target.checked; buildTeamList(); recompute(true); };
   updateUpcomingCount();
+  renderUpcomingList();
 
   // timeline scrubber
   const scrub = document.getElementById("year-scrub");
@@ -805,6 +816,40 @@ function setYearLabel() {
 function updateUpcomingCount() {
   const el = document.getElementById("upcoming-count");
   if (el) { const n = S.upcoming[S.gender].size; el.textContent = n ? `(${n})` : "(none)"; }
+}
+
+function fmtDate(iso) {
+  return new Date(iso + "T00:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
+// Scrollable list of upcoming first meetings, classified by the client's date: future fixtures
+// are "upcoming"; ones whose date has just passed (data not yet refreshed) show "pending".
+function renderUpcomingList() {
+  const section = document.getElementById("upcoming-section");
+  const list = document.getElementById("upcoming-list");
+  if (!section) return;
+  const cut = new Date(S.today + "T00:00:00"); cut.setDate(cut.getDate() - 14);
+  const cutoff = cut.toISOString().slice(0, 10);
+  const items = [];
+  for (const [key, [date, tourn]] of S.upcoming[S.gender]) {
+    if (date < cutoff) continue;                 // drop stale / abandoned fixtures
+    const [lo, hi] = key.split(",").map(Number);
+    items.push({ lo, hi, date, tourn, future: date >= S.today });
+  }
+  items.sort((a, b) => a.date.localeCompare(b.date));
+  if (!items.length) { section.hidden = true; return; }
+  section.hidden = false;
+  const nFuture = items.filter(i => i.future).length;
+  document.getElementById("upcoming-list-count").textContent = nFuture ? `(${nFuture})` : "";
+  list.innerHTML = items.map(it => {
+    const A = S.byId.get(it.lo), B = S.byId.get(it.hi);
+    return `<button class="up-row${it.future ? "" : " pending"}" data-a="${it.lo}" data-b="${it.hi}"`
+      + ` title="${it.tourn} · ${it.date}">`
+      + `<span class="up-date">${fmtDate(it.date)}</span>`
+      + `<span class="up-teams">${A.name} <span class="dim">v</span> ${B.name}`
+      + `${it.future ? "" : ' <span class="dim">· pending</span>'}</span></button>`;
+  }).join("");
+  list.onclick = e => { const b = e.target.closest(".up-row"); if (b) openPair(+b.dataset.a, +b.dataset.b); };
 }
 
 /* ---------- stats ---------- */

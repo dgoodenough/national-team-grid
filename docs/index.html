@@ -45,6 +45,11 @@
       <label class="check"><input type="checkbox" id="opt-defunct" /> Include defunct teams <span class="hint">(advanced)</span></label>
     </section>
 
+    <section class="ctl" id="upcoming-section" hidden>
+      <div class="row"><span class="lbl">Upcoming first meetings</span><span class="hint" id="upcoming-list-count"></span></div>
+      <div id="upcoming-list" class="upcoming-list"></div>
+    </section>
+
     <section class="ctl" id="timeline">
       <div class="row"><span class="lbl">Timeline</span><span id="year-label" class="hint"></span></div>
       <input type="range" id="year-scrub" min="1872" max="2026" step="1" value="2026" autocomplete="off" />

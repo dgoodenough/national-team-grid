@@ -83,6 +83,25 @@ button.wide:hover { border-color: var(--accent); }
 
 #year-scrub { width: 100%; accent-color: var(--accent); cursor: pointer; }
 
+/* upcoming first-meetings list */
+.upcoming-list {
+  max-height: 168px; overflow-y: auto; border: 1px solid var(--line); border-radius: 7px;
+  background: var(--panel-2); padding: 4px 6px;
+}
+.up-row {
+  display: grid; grid-template-columns: 46px 1fr; gap: 9px; align-items: baseline; width: 100%;
+  background: none; border: none; color: var(--ink); text-align: left; cursor: pointer;
+  padding: 5px 6px; border-radius: 6px; font-size: .82rem;
+}
+.up-row:hover { background: var(--panel); }
+.up-row .up-date {
+  color: var(--upcoming); font-weight: 700; font-size: .72rem; white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.up-row .up-teams { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.up-row.pending { opacity: .6; }
+.up-row.pending .up-date { color: var(--ink-dim); }
+
 #sort {
   width: 100%; padding: 7px 9px; background: var(--panel-2); border: 1px solid var(--line);
   color: var(--ink); border-radius: 7px; font-size: .85rem; cursor: pointer;
