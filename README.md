@@ -43,8 +43,9 @@ have simply never met.
   sub-grid using the chosen sort.
 - **Highlight never-played** mode for the full Scorigami effect.
 - **Upcoming FIFAGami** — highlight in yellow the pairs that have *never* met but have a
-  scheduled fixture (e.g. first-ever meetings at the 2026 World Cup). They drop off automatically
-  once the match is played.
+  scheduled fixture (e.g. first-ever meetings at the 2026 World Cup), plus a scrollable list of
+  them (soonest first; click one for the head-to-head). The browser's current date decides what's
+  still "upcoming" vs already played, so it stays accurate between data refreshes.
 - **Timeline scrubber** — drag through the years and watch the grid fill in; empty cells are
   matchups that hadn't happened *yet*. (First pass: a team that didn't exist in a given year just
   shows as not-yet-met, rather than being greyed out.)
