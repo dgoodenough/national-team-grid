@@ -45,15 +45,17 @@ const ctx = canvas.getContext("2d");
 const tooltip = document.getElementById("tooltip");
 const canvasWrap = document.getElementById("canvas-wrap");
 let DPR = window.devicePixelRatio || 1;
+// Per-day cache-buster: data refreshes daily, so re-fetch fresh once a day (cached within the day).
+const VBUST = "?d=" + new Date().toISOString().slice(0, 10);
 
 /* ---------- data loading ---------- */
 async function load() {
   const [members, mMen, mWomen, defunct, upcoming] = await Promise.all([
-    fetch("data/members.json").then(r => r.json()),
-    fetch("data/matrix_men.json").then(r => r.json()),
-    fetch("data/matrix_women.json").then(r => r.json()),
-    fetch("data/defunct.json").then(r => r.json()),
-    fetch("data/upcoming.json").then(r => r.json()).catch(() => ({ men: [], women: [] })),
+    fetch("data/members.json" + VBUST).then(r => r.json()),
+    fetch("data/matrix_men.json" + VBUST).then(r => r.json()),
+    fetch("data/matrix_women.json" + VBUST).then(r => r.json()),
+    fetch("data/defunct.json" + VBUST).then(r => r.json()),
+    fetch("data/upcoming.json" + VBUST).then(r => r.json()).catch(() => ({ men: [], women: [] })),
   ]);
 
   S.members = members.members;
@@ -557,7 +559,7 @@ function setupInteraction() {
 /* ---------- match-detail card (lazy-loaded) ---------- */
 async function ensureMatches(gender) {
   if (!S.matches[gender]) {
-    S.matches[gender] = await fetch(`data/matches_${gender}.json`).then(r => r.json());
+    S.matches[gender] = await fetch(`data/matches_${gender}.json` + VBUST).then(r => r.json());
   }
   return S.matches[gender];
 }

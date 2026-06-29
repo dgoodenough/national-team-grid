@@ -101,6 +101,14 @@
     </div>
   </main>
 </div>
-<script src="app.js"></script>
+<script>
+  // Load the app with a per-day cache-buster so the daily auto-refresh (and any code change)
+  // reaches returning visitors within a day, despite GitHub Pages' 10-minute asset cache.
+  (function () {
+    var s = document.createElement("script");
+    s.src = "app.js?d=" + new Date().toISOString().slice(0, 10);
+    document.body.appendChild(s);
+  })();
+</script>
 </body>
 </html>
