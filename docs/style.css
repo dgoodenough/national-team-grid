@@ -3,9 +3,10 @@
    green = played (ramp), red = never (when highlighted), yellow = upcoming. */
 
 :root {
-  /* app-level aliases onto the Ledger tokens (canvas reads these via getCss) */
-  --bg: var(--paper);
-  --panel: var(--paper);
+  /* app-level aliases onto the Ledger tokens (canvas reads these via getCss).
+     Sheet-on-chrome: the grid is the white "sheet"; the surfaces around it are grey. */
+  --bg: var(--chrome);
+  --panel: var(--chrome-2);
   --panel-2: var(--paper-2);
   --ink-dim: var(--ink-2);
   --line: var(--grid);
@@ -19,7 +20,7 @@
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; }
 body {
-  background: var(--paper);
+  background: var(--chrome);
   color: var(--ink);
   font-family: var(--font);
   overflow: hidden;
@@ -31,7 +32,7 @@ a { color: var(--accent); }
 /* ---- panel ---- */
 #panel {
   width: 300px; min-width: 300px; height: 100%;
-  background: var(--paper);
+  background: var(--chrome-2);
   border-right: 1px solid var(--grid-strong);
   overflow-y: auto;
   padding: 16px 16px 24px;
@@ -155,7 +156,7 @@ button.mini:hover { color: var(--ink); border-color: var(--ink); }
 
 #loading {
   position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
-  color: var(--ink-2); background: var(--paper); font-size: .95rem;
+  color: var(--ink-2); background: var(--chrome); font-size: .95rem;
 }
 
 /* single-team focus view (one team manually selected) */
@@ -249,7 +250,7 @@ button.mini:hover { color: var(--ink); border-color: var(--ink); }
 
   /* Timeline scrubber moved up into the stage (under the headline, above the grid). */
   #timeline-slot #timeline {
-    margin: 0; padding: 8px 16px 10px; border-bottom: 1px solid var(--grid-strong); background: var(--paper);
+    margin: 0; padding: 8px 16px 10px; border-bottom: 1px solid var(--grid-strong); background: var(--chrome-2);
   }
   #timeline-slot #timeline .row { margin-bottom: 6px; }
   #timeline-slot .timeline-help { display: none; }

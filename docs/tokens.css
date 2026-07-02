@@ -9,8 +9,10 @@
 
 :root {
   /* ---- greyscale (structure) ---- */
-  --paper: #ffffff;        /* page background */
-  --paper-2: #f6f6f6;      /* panels, zebra rows */
+  --paper: #ffffff;        /* the data sheet: tables, cards, inputs */
+  --paper-2: #f6f6f6;      /* zebra rows, subtle wells */
+  --chrome: #d2d5d8;       /* app background around the data (the grey desk) */
+  --chrome-2: #e6e8ea;     /* control panels / pickers (lighter chrome) */
   --grid: #e2e2e2;         /* hairline gridlines */
   --grid-strong: #c9c9c9;  /* emphasized rules / control borders */
   --ink: #111417;          /* primary text */
