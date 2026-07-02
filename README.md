@@ -141,6 +141,10 @@ The ~44,000-cell grid is drawn directly to a canvas with view-culling for smooth
 Events drive one interaction path for both mouse (hover, drag, click, wheel) and touch (drag to pan,
 pinch to zoom, tap for detail), and the layout reflows for phones. Hosted on GitHub Pages from `docs/`.
 
+Styled with [Ledger](https://github.com/dgoodenough/style) (vendored `tokens.css`) — greyscale
+carries structure, color carries meaning: the green ramp is "how often they've played", red is
+"never", yellow is "upcoming".
+
 ## Credits
 
 Match data © the [martj42](https://github.com/martj42) datasets; current FIFA rankings via

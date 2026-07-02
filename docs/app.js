@@ -4,9 +4,11 @@
    Vanilla JS + Canvas. Loads pre-built JSON from data/ and renders an N×N grid where each
    cell is a pair of national teams, coloured by how many times they have met. */
 
+// Categorical hues (muted for the light Ledger theme; category colour ≠ meaning colour —
+// green/red/yellow are reserved for played/never/upcoming semantics).
 const CONFED_COLOR = {
-  AFC: "#e0524d", CAF: "#37b98a", CONCACAF: "#e6b54a",
-  CONMEBOL: "#4f8fd0", OFC: "#b07a52", UEFA: "#9a6ad6",
+  AFC: "#c0564b", CAF: "#2a9d8f", CONCACAF: "#e0a72f",
+  CONMEBOL: "#4d7fb2", OFC: "#a07850", UEFA: "#7d5ba6",
 };
 let MARGIN = 116;                    // px reserved for labels + confederation band (set in resize)
 const BAND = 13;                     // px confederation colour strip at outer edge
@@ -213,9 +215,10 @@ function clampPan() {
 }
 
 /* ---------- colour ---------- */
+// Single-hue grey→green ramp (Ledger): more green = more played. Absence stays paper-white.
 const RAMP = [
-  [0.00, [29, 53, 87]], [0.35, [69, 123, 157]], [0.60, [233, 196, 106]],
-  [0.82, [231, 111, 81]], [1.00, [200, 40, 40]],
+  [0.00, [222, 233, 226]], [0.30, [207, 230, 216]], [0.55, [143, 200, 168]],
+  [0.80, [63, 157, 104]], [1.00, [11, 107, 56]],
 ];
 function lerp(a, b, t) { return Math.round(a + (b - a) * t); }
 function rampColor(t) {
@@ -226,7 +229,7 @@ function rampColor(t) {
       return `rgb(${lerp(c0[0], c1[0], f)},${lerp(c0[1], c1[1], f)},${lerp(c0[2], c1[2], f)})`;
     }
   }
-  return "rgb(200,40,40)";
+  return "rgb(11,107,56)";
 }
 function cellColor(count) {
   const never = S.highlightNever
@@ -234,8 +237,8 @@ function cellColor(count) {
   if (!count) return never;
   const t = Math.log1p(count) / Math.log1p(S.maxCount[S.gender]);
   if (S.highlightNever) {            // de-emphasise played cells to spotlight the empties
-    const g = lerp(58, 174, t);
-    return `rgb(${g},${g + 6},${g + 14})`;
+    const g = lerp(232, 150, t);     // pale grey → mid grey on the light theme
+    return `rgb(${g},${g},${g})`;
   }
   return rampColor(t);
 }
@@ -303,9 +306,13 @@ function draw() {
       ctx.fillRect(Math.floor(ox + c * cell), Math.floor(y), span, span);
     }
   }
+  // outline the grid extent so paper-white "never" cells read as part of the grid
+  ctx.strokeStyle = getCss("--grid-strong");
+  ctx.lineWidth = 1;
+  ctx.strokeRect(ox + .5, oy + .5, n * cell - 1, n * cell - 1);
   // hover crosshair
   if (S.hover) {
-    ctx.fillStyle = "rgba(255,255,255,.08)";
+    ctx.fillStyle = "rgba(0,0,0,.07)";
     ctx.fillRect(MARGIN, oy + S.hover.r * cell, gw, cell);
     ctx.fillRect(ox + S.hover.c * cell, MARGIN, cell, gh);
   }
@@ -401,7 +408,7 @@ function drawBands(n, ox, oy, cell) {
     // Label, stuck to the visible portion of the run (only when there's room).
     const visW = Math.min(ox + a + len, right) - Math.max(ox + a, MARGIN);
     const visH = Math.min(oy + a + len, bottom) - Math.max(oy + a, MARGIN);
-    ctx.fillStyle = "#0e1016";
+    ctx.fillStyle = "#ffffff";
     if (visW > 26) {
       const cx = clamp(ox + a + len / 2, MARGIN + 12, right - 12);
       ctx.fillText(run.confed, cx, MARGIN - BAND / 2 - .5);
