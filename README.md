@@ -144,6 +144,7 @@ pinch to zoom, tap for detail), and the layout reflows for phones. Hosted on Git
 ## Credits
 
 Match data © the [martj42](https://github.com/martj42) datasets; current FIFA rankings via
-[FotMob](https://www.fotmob.com); confederation mapping from
+[FotMob](https://www.fotmob.com); upcoming fixtures via [ESPN](https://www.espn.com/soccer/)'s
+public scoreboard API; confederation mapping from
 [cnc8/fifa-world-ranking](https://github.com/cnc8/fifa-world-ranking). Concept inspired by
 [Scorigami](https://nflscorigami.com) (Jon Bois). Code under the [MIT License](LICENSE).
