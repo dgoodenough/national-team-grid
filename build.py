@@ -24,7 +24,7 @@ import csv
 import json
 import sys
 import urllib.request
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
@@ -101,6 +101,54 @@ FOTMOB_ALIASES = {
     "U.S. Virgin Islands": "United States Virgin Islands",
 }
 
+# --- ESPN fixtures (supplementary source for upcoming games) -----------------
+# ESPN's public scoreboard API (no key) lists scheduled internationals further out than
+# martj42 does — including women's competitions. Senior national-team competitions only.
+ESPN_SLUGS_MEN = [
+    "fifa.world", "fifa.worldq.uefa", "fifa.worldq.conmebol", "fifa.worldq.concacaf",
+    "fifa.worldq.afc", "fifa.worldq.caf", "fifa.worldq.ofc", "fifa.wcq.ply",
+    "fifa.friendly", "fifa.confederations_cup",
+    "uefa.euro", "uefa.euroq", "uefa.nations",
+    "conmebol.america", "concacaf.gold", "concacaf.gold_qual", "concacaf.nations.league",
+    "caf.nations", "caf.nations_qual", "afc.asian.cup", "afc.cupq",
+]
+ESPN_SLUGS_WOMEN = [
+    "fifa.wwc", "fifa.wwcq.ply", "fifa.wworldq.uefa", "fifa.friendly.w", "fifa.shebelieves",
+    "uefa.weuro", "uefa.w.nations", "concacaf.womens.championship", "concacaf.w.gold",
+    "conmebol.america.femenina", "caf.w.nations", "afc.w.asian.cup", "global.w.finalissima",
+]
+# How far ahead to look. ESPN caps the window per request, so we fetch in ~120-day chunks;
+# 2 years is plenty to catch far-out tournaments without hammering the API.
+ESPN_HORIZON_DAYS = 730
+ESPN_CHUNK_DAYS = 120
+
+# ESPN displayName -> canonical member name (only the ones that differ).
+ESPN_ALIASES = {
+    "USA": "United States",
+    "Congo DR": "DR Congo",
+    "Bosnia-Herzegovina": "Bosnia and Herzegovina",
+    "Czechia": "Czech Republic",
+    "Türkiye": "Turkey",
+    "Turkiye": "Turkey",
+    "Ireland": "Republic of Ireland",
+    "Cabo Verde": "Cape Verde",
+    "Côte d'Ivoire": "Ivory Coast",
+    "Chinese Taipei": "Taiwan",
+    "Curacao": "Curaçao",
+    "Macao": "Macau",
+    "Sao Tome and Principe": "São Tomé and Príncipe",
+    "St. Kitts and Nevis": "Saint Kitts and Nevis",
+    "St. Lucia": "Saint Lucia",
+    "St. Vincent and the Grenadines": "Saint Vincent and the Grenadines",
+    "U.S. Virgin Islands": "United States Virgin Islands",
+    "South Korea": "South Korea",
+    "North Korea": "North Korea",
+    "China PR": "China",
+    "IR Iran": "Iran",
+    "Korea Republic": "South Korea",
+    "Korea DPR": "North Korea",
+}
+
 # Curated defunct national teams (no single current successor) for the advanced layer,
 # with the confederation their grid block should sit in. Names are exactly as spelled in
 # the martj42 match data. (USSR is omitted: martj42 folds it into Russia; Netherlands
@@ -163,6 +211,56 @@ def year_of(datestr: str) -> int | None:
 def latest_match_date(results_file: str) -> str:
     """Most recent match date (ISO strings sort lexically)."""
     return max((row["date"] for row in read_csv(RAW / results_file)), default="")
+
+
+# --- ESPN upcoming fixtures ---------------------------------------------------
+def fetch_espn_fixtures(gender: str) -> dict[tuple[str, str], tuple[str, str]]:
+    """Scheduled internationals from ESPN's public scoreboard, {(nameA, nameB): (date, comp)}.
+    Names are ESPN displayNames run through ESPN_ALIASES (not yet validated against members).
+    Entirely best-effort: any slug/chunk failure is skipped so the build never breaks on ESPN."""
+    slugs = ESPN_SLUGS_MEN if gender == "men" else ESPN_SLUGS_WOMEN
+    ua = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+          "(KHTML, like Gecko) Chrome/124.0 Safari/537.36")
+    today = date.today()
+    chunks = []
+    start = today
+    while (start - today).days < ESPN_HORIZON_DAYS:
+        end = start + timedelta(days=ESPN_CHUNK_DAYS)
+        chunks.append((start.strftime("%Y%m%d"), end.strftime("%Y%m%d")))
+        start = end + timedelta(days=1)
+
+    out: dict[tuple[str, str], tuple[str, str]] = {}
+    fails = 0
+    for slug in slugs:
+        for a, b in chunks:
+            url = (f"https://site.api.espn.com/apis/site/v2/sports/soccer/{slug}"
+                   f"/scoreboard?dates={a}-{b}")
+            try:
+                req = urllib.request.Request(url, headers={"User-Agent": ua})
+                data = json.loads(urllib.request.urlopen(req, timeout=30).read())
+            except Exception:  # noqa: BLE001
+                fails += 1
+                continue
+            comp_name = ((data.get("leagues") or [{}])[0].get("name")
+                         or slug).strip()
+            for ev in data.get("events", []):
+                dt = ev.get("date", "")[:10]
+                if not dt or dt < today.isoformat():
+                    continue                     # only future fixtures from ESPN
+                try:
+                    teams = ev["competitions"][0]["competitors"]
+                    names = [t["team"]["displayName"].strip() for t in teams]
+                except (KeyError, IndexError, TypeError):
+                    continue
+                if len(names) != 2:
+                    continue
+                na, nb = (ESPN_ALIASES.get(n, n) for n in names)
+                key = tuple(sorted((na, nb)))
+                if key not in out or dt < out[key][0]:   # keep the earliest meeting
+                    out[key] = (dt, comp_name)
+    log(f"  ESPN {gender}: {len(out)} scheduled fixtures "
+        f"({len(slugs)} comps x {len(chunks)} windows, {fails} skipped requests)")
+    return out
 
 
 # --- Step 2: canonical member table ------------------------------------------
@@ -444,9 +542,34 @@ def main() -> int:
     n_men = write_matches("men", men_details, men_tourn)
     n_wom = write_matches("women", wom_details, wom_tourn)
 
-    # Upcoming FIFAGami: scheduled fixtures between members who have NEVER met. We emit every
-    # such fixture (with its date) and let the client filter by the browser's current date, so
-    # the highlight stays accurate between rebuilds. Sorted soonest-first.
+    # Upcoming FIFAGami: scheduled fixtures between members who have NEVER met, from
+    # martj42's own advance listings merged with ESPN's scoreboard (which lists games much
+    # further out, incl. women's). We emit every such fixture (with its date) and let the
+    # client filter by the browser's current date, so the highlight stays accurate between
+    # rebuilds. Sorted soonest-first.
+    def merge_espn(upcoming: dict, gender: str) -> tuple[dict, int, list]:
+        espn = fetch_espn_fixtures(gender)
+        added, unknown = 0, []
+        for (na, nb), (dt, comp) in espn.items():
+            ia, ib = name_to_id.get(na), name_to_id.get(nb)
+            if ia is None or ib is None:
+                unknown.extend(n for n, i in ((na, ia), (nb, ib)) if i is None)
+                continue
+            key = (min(ia, ib), max(ia, ib))
+            if key not in upcoming or dt < upcoming[key][0]:
+                if key not in upcoming:
+                    added += 1
+                upcoming[key] = (dt, comp)
+        return upcoming, added, sorted(set(unknown))
+
+    men_up, men_added, men_unk = merge_espn(men_up, "men")
+    wom_up, wom_added, wom_unk = merge_espn(wom_up, "women")
+    log(f"  ESPN merge: +{men_added} men's, +{wom_added} women's fixtures beyond martj42")
+    for g, unk in (("men", men_unk), ("women", wom_unk)):
+        if unk:
+            log(f"  note: ESPN {g} names not matching a member (ignored): "
+                f"{unk[:8]}{' …' if len(unk) > 8 else ''}")
+
     def upcoming_gami(upcoming: dict, played: dict) -> list:
         out = [[lo, hi, d, t] for (lo, hi), (d, t) in upcoming.items() if (lo, hi) not in played]
         return sorted(out, key=lambda r: r[2])

@@ -43,9 +43,11 @@ have simply never met.
   sub-grid using the chosen sort.
 - **Highlight never-played** mode for the full Scorigami effect.
 - **Upcoming FIFAGami** — highlight in yellow the pairs that have *never* met but have a
-  scheduled fixture (e.g. first-ever meetings at the 2026 World Cup), plus a scrollable list of
-  them (soonest first; click one for the head-to-head). The browser's current date decides what's
-  still "upcoming" vs already played, so it stays accurate between data refreshes.
+  scheduled fixture, plus a scrollable list of them (soonest first; click one for the
+  head-to-head). Fixtures come from martj42's advance listings merged with ESPN's public
+  scoreboard across ~30 senior international competitions (both genders), looking up to two
+  years out. The browser's current date decides what's still "upcoming" vs already played,
+  so it stays accurate between data refreshes.
 - **Timeline scrubber** — drag through the years and watch the grid fill in; empty cells are
   matchups that hadn't happened *yet*. (First pass: a team that didn't exist in a given year just
   shows as not-yet-met, rather than being greyed out.)
@@ -62,6 +64,7 @@ have simply never met.
 | Women's internationals (1969–present, ~12k matches) | [martj42/womens-international-results](https://github.com/martj42/womens-international-results) | match counts, first/last meeting |
 | Historical team renames | `former_names.csv` (martj42) | folding old names into current teams |
 | Current FIFA ranking, men's + women's | [FotMob](https://www.fotmob.com/fifaranking/men) (mirrors the official ranking) | rank ordering within / across confederations |
+| Scheduled internationals (men's + women's) | ESPN public scoreboard API | upcoming first-ever meetings, up to ~2 years out |
 | Confederation membership | [cnc8/fifa-world-ranking](https://github.com/cnc8/fifa-world-ranking) | which confederation each team belongs to |
 
 ### Methodology notes
