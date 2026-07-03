@@ -1,19 +1,19 @@
-/* FIFAGami — themed on Ledger (see docs/tokens.css, source: github.com/dgoodenough/style).
-   Greyscale carries structure; color carries meaning:
-   green = played (ramp), red = never (when highlighted), yellow = upcoming. */
+/* FIFAGami — themed on Ledger, dark (see docs/tokens.css, source:
+   github.com/dgoodenough/style). Greyscale carries structure; color carries meaning:
+   green = played (glowing ramp), red = never (when highlighted), yellow = upcoming. */
 
 :root {
   /* app-level aliases onto the Ledger tokens (canvas reads these via getCss).
-     Sheet-on-chrome: the grid is the white "sheet"; the surfaces around it are grey. */
+     Sheet-on-chrome: the grid is the dark "sheet"; the chrome around it is darker still. */
   --bg: var(--chrome);
   --panel: var(--chrome-2);
   --panel-2: var(--paper-2);
   --ink-dim: var(--ink-2);
   --line: var(--grid);
-  --never: #ffffff;         /* never-played cell (paper) */
-  --never-hi: #f3b8b3;      /* never-played when highlighted (strong red fill) */
+  --never: var(--paper);    /* never-played cell = the sheet */
+  --never-hi: #b3362c;      /* never-played when highlighted (red floods the void) */
   --upcoming: var(--pend-solid); /* scheduled first meeting */
-  --diag: #2b2f33;          /* same-team diagonal */
+  --diag: #0d0e10;          /* same-team diagonal (darker than the sheet) */
   font-size: 14px;
 }
 
@@ -147,7 +147,7 @@ button.mini:hover { color: var(--ink); border-color: var(--ink); }
 
 #tooltip {
   position: absolute; pointer-events: none; z-index: 7;
-  background: var(--paper); border: 1px solid var(--ink); border-radius: var(--radius);
+  background: var(--paper); border: 1px solid var(--grid-strong); border-radius: var(--radius);
   padding: 8px 10px; font-size: .8rem; max-width: 240px; box-shadow: 0 2px 10px rgba(0,0,0,.18);
 }
 #tooltip .vs { font-weight: 700; margin-bottom: 3px; }
@@ -199,7 +199,7 @@ button.mini:hover { color: var(--ink); border-color: var(--ink); }
   position: absolute; top: 14px; right: 14px; z-index: 8;
   width: 330px; max-width: calc(100% - 28px); max-height: calc(100% - 28px);
   display: flex; flex-direction: column;
-  background: var(--paper); border: 1px solid var(--ink); border-radius: var(--radius);
+  background: var(--paper); border: 1px solid var(--grid-strong); border-radius: var(--radius);
   box-shadow: 0 4px 18px rgba(0,0,0,.22); overflow: hidden;
 }
 #detail .dh {
