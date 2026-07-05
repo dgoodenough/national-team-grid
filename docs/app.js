@@ -26,7 +26,7 @@ const S = {
   meta: {},
   // view options
   gender: "men",
-  sort: "confed",                    // "confed" | "rank" | "alpha"
+  sort: "confed",                    // "confed" | "rank" | "matches" | "alpha"
   showConfeds: new Set(),
   manual: new Set(),
   includeDefunct: false,
@@ -171,8 +171,25 @@ function recompute(fit) {
   if (S.manual.size) active = base.filter(m => S.manual.has(m.id));
   else active = base.filter(m => S.showConfeds.has(m.confed));
 
+  // For the "total matches" sort, tally each active team's meetings against the whole pool
+  // (everyone, not just the visible subset), honouring the time scrubber via countAsOf.
+  let totals = null;
+  if (S.sort === "matches") {
+    totals = new Map();
+    for (const m of active) {
+      let t = 0;
+      for (const o of base) if (o.id !== m.id) t += countAsOf(m.id, o.id);
+      totals.set(m.id, t);
+    }
+  }
+
   active.sort((a, b) => {
     if (S.sort === "alpha") return a.name.localeCompare(b.name);
+    if (S.sort === "matches") {
+      const ta = totals.get(a.id), tb = totals.get(b.id);
+      if (ta !== tb) return tb - ta;                 // most matches first
+      return a.name.localeCompare(b.name);
+    }
     if (S.sort === "rank") {
       const ra = rankOf(a), rb = rankOf(b);
       if (ra !== rb) return ra - rb;
