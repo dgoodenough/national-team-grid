@@ -219,8 +219,10 @@ def fetch_espn_fixtures(gender: str) -> dict[tuple[str, str], tuple[str, str]]:
     Names are ESPN displayNames run through ESPN_ALIASES (not yet validated against members).
     Entirely best-effort: any slug/chunk failure is skipped so the build never breaks on ESPN."""
     slugs = ESPN_SLUGS_MEN if gender == "men" else ESPN_SLUGS_WOMEN
-    ua = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-          "(KHTML, like Gecko) Chrome/124.0 Safari/537.36")
+    # ESPN's edge now 403s browser-like User-Agents (bot detection on fake "Mozilla" strings);
+    # a plain curl UA passes. If they ever block this too, every request will 403 and the
+    # all-requests-failed guard below will surface it instead of silently emptying the list.
+    ua = "curl/8.4.0"
     today = date.today()
     chunks = []
     start = today
@@ -258,8 +260,12 @@ def fetch_espn_fixtures(gender: str) -> dict[tuple[str, str], tuple[str, str]]:
                 key = tuple(sorted((na, nb)))
                 if key not in out or dt < out[key][0]:   # keep the earliest meeting
                     out[key] = (dt, comp_name)
+    total_reqs = len(slugs) * len(chunks)
     log(f"  ESPN {gender}: {len(out)} scheduled fixtures "
         f"({len(slugs)} comps x {len(chunks)} windows, {fails} skipped requests)")
+    if fails == total_reqs and total_reqs:
+        log(f"  WARNING: ESPN {gender} — ALL {total_reqs} requests failed; the ESPN feed is "
+            f"down or blocking us (upcoming FIFAGami will rely on martj42 alone).")
     return out
 
 
