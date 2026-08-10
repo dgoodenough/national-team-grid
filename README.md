@@ -28,8 +28,11 @@ have simply never met.
 ## Features
 
 - **Zoom & pan** the full 211×211 grid (mouse wheel or the on-grid −/Fit/+ controls; drag to pan).
-- **Men's ↔ Women's** toggle — two completely separate match archives, each with its own current
-  FIFA ranking.
+- **Men's ↔ Women's ↔ Both** toggle — two completely separate match archives, each with its own
+  current FIFA ranking. **Both** overlays them into a four-colour view: pairings that have met in
+  *both* games (green), the *men's only* (blue), the *women's only* (orange), and *neither* — so
+  you can see where one game has explored a matchup the other hasn't (≈4,000 men's-only vs a few
+  hundred women's-only today, and the gap closes as you scrub forward through time).
 - **Sort** three ways: *Confederation, then FIFA rank* (default — confederations form blocks);
   *FIFA rank, global* (straight down the line, confederations interleave into a colour stripe); or
   *Alphabetical*.
@@ -39,8 +42,9 @@ have simply never met.
   doesn't slow the initial grid.
 - **Hover** any cell for a quick tooltip (meetings + first/last year).
 - **Manual team checklist** — tick **one** team to see all of its matchups ranked from
-  most- to least-played (with a *never-met* tally); tick **two or more** to build a custom
-  sub-grid using the chosen sort.
+  most- to least-played (with a *never-met* tally; in **Both** mode, opponents are grouped by
+  which game(s) they've met in); tick **two or more** to build a custom sub-grid using the
+  chosen sort.
 - **Highlight never-played** mode for the full Scorigami effect.
 - **Upcoming FIFAGami** — highlight in yellow the pairs that have *never* met but have a
   scheduled fixture, plus a scrollable list of them (soonest first; click one for the

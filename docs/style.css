@@ -14,6 +14,11 @@
   --never-hi: #b3362c;      /* never-played when highlighted (red floods the void) */
   --upcoming: var(--pend-solid); /* scheduled first meeting */
   --diag: #0d0e10;          /* same-team diagonal (darker than the sheet) */
+  /* Combined (men's + women's) view categories. Blue/orange are the most
+     colourblind-distinguishable pair; green (the theme accent) marks "both". */
+  --both: var(--pos);       /* pairing has met in BOTH the men's and women's game */
+  --men-only: #5aa9e6;      /* met in the men's game only */
+  --women-only: #eb9a3f;    /* met in the women's game only */
   font-size: 14px;
 }
 
@@ -108,6 +113,11 @@ button.mini:hover { color: var(--ink); border-color: var(--ink); }
 #sw-never { background: var(--never); border: 1px solid var(--grid-strong); }
 #sw-upcoming { background: var(--upcoming); }
 #sw-diag { background: var(--diag); }
+.legend-combined-keys { flex-wrap: wrap; gap: 8px 16px; }
+#sw-both { background: var(--both); }
+#sw-men { background: var(--men-only); }
+#sw-women { background: var(--women-only); }
+#sw-neither { background: var(--never); border: 1px solid var(--grid-strong); }
 
 #panel footer { margin-top: 20px; padding-top: 14px; border-top: 1px solid var(--grid); }
 #panel footer p { margin: 0 0 6px; font-size: .7rem; color: var(--ink-3); line-height: 1.5; }
@@ -128,6 +138,7 @@ button.mini:hover { color: var(--ink); border-color: var(--ink); }
 #headline .rest { font-size: .95rem; color: var(--band-ink); max-width: 60ch; }
 #headline .rest b { color: var(--pos-on-band); }
 #headline.allplayed .big { color: var(--pos-on-band); }
+#headline.combined .big { color: var(--pos-on-band); }  /* the "both" count */
 
 #canvas-wrap { position: relative; flex: 1; min-height: 0; overflow: hidden; }
 #grid { display: block; width: 100%; height: 100%; cursor: grab; touch-action: none; }
@@ -228,6 +239,8 @@ button.mini:hover { color: var(--ink); border-color: var(--ink); }
 #detail .mr .sc { font-weight: 700; font-variant-numeric: tabular-nums; }
 #detail .mr.w .sc { color: var(--pos); } #detail .mr.l .sc { color: var(--neg); }
 #detail .mr .tn { color: var(--ink-3); font-size: .72rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#detail .det-gender + .det-gender { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--grid-strong); }
+#detail .det-label { display: block; font-size: .72rem; text-transform: uppercase; letter-spacing: .6px; font-weight: 700; margin-bottom: 5px; }
 
 @media (max-width: 720px) {
   body { overflow-y: auto; overflow-x: hidden; }

@@ -107,10 +107,11 @@ function buildPairMap(pairs, defunctPairs) {
   return map;
 }
 
-function lookup(a, b) {
+function lookup(a, b, gender = S.gender) {
   if (a === b) return null;
+  if (gender === "both") gender = "men";        // "both" isn't a dataset; caller should pass one
   const k = a < b ? `${a},${b}` : `${b},${a}`;
-  return S.pairs[S.gender].get(k) || null;
+  return S.pairs[gender].get(k) || null;
 }
 
 function present() { return S.year == null || S.year >= S.maxYear; }
@@ -118,12 +119,13 @@ function present() { return S.year == null || S.year >= S.maxYear; }
 function pairKey(a, b) { return a < b ? `${a},${b}` : `${b},${a}`; }
 
 // Number of meetings as of the scrubber year (== total at present).
-function countAsOf(a, b) {
+function countAsOf(a, b, gender = S.gender) {
   if (a === b) return 0;
+  if (gender === "both") gender = "men";        // "both" isn't a dataset; caller should pass one
   const k = pairKey(a, b);
-  if (present()) { const p = S.pairs[S.gender].get(k); return p ? p[0] : 0; }
-  const ys = S.yearsByPair[S.gender];
-  if (!ys) { const p = S.pairs[S.gender].get(k); return p ? p[0] : 0; }  // not loaded yet
+  if (present()) { const p = S.pairs[gender].get(k); return p ? p[0] : 0; }
+  const ys = S.yearsByPair[gender];
+  if (!ys) { const p = S.pairs[gender].get(k); return p ? p[0] : 0; }  // not loaded yet
   const arr = ys.get(k);
   if (!arr) return 0;
   let lo = 0, hi = arr.length;                          // count years <= S.year (arr sorted asc)
@@ -146,9 +148,38 @@ async function ensureYears(gender) {
 }
 
 /* ---------- ordering ---------- */
+const isCombined = () => S.gender === "both";
+
 function rankOf(m) {
+  if (isCombined()) {                            // best (lowest) of the two ranks
+    return Math.min(m.mens_rank == null ? Infinity : m.mens_rank,
+                    m.womens_rank == null ? Infinity : m.womens_rank);
+  }
   const r = S.gender === "men" ? m.mens_rank : m.womens_rank;
   return r == null ? Infinity : r;
+}
+
+// Combined view: which datasets a pair has met in, as of the scrubber year.
+// Bitmask 1 = men, 2 = women, so 3 = both, 0 = neither.
+function metCategory(a, b) {
+  return (countAsOf(a, b, "men") > 0 ? 1 : 0) | (countAsOf(a, b, "women") > 0 ? 2 : 0);
+}
+function combinedColor(a, b) {
+  switch (metCategory(a, b)) {
+    case 3: return getCss("--both");
+    case 1: return getCss("--men-only");
+    case 2: return getCss("--women-only");
+    default: return getCss("--never");
+  }
+}
+// Per-pair meeting years must be loaded for both datasets before scrubbing in combined view.
+function ensureYearsForView() {
+  return isCombined()
+    ? Promise.all([ensureYears("men"), ensureYears("women")])
+    : ensureYears(S.gender);
+}
+function yearsLoadedForView() {
+  return isCombined() ? (S.yearsByPair.men && S.yearsByPair.women) : S.yearsByPair[S.gender];
 }
 
 function recompute(fit) {
@@ -176,9 +207,10 @@ function recompute(fit) {
   let totals = null;
   if (S.sort === "matches") {
     totals = new Map();
+    const genders = isCombined() ? ["men", "women"] : [S.gender];  // combined = men + women
     for (const m of active) {
       let t = 0;
-      for (const o of base) if (o.id !== m.id) t += countAsOf(m.id, o.id);
+      for (const o of base) if (o.id !== m.id) for (const g of genders) t += countAsOf(m.id, o.id, g);
       totals.set(m.id, t);
     }
   }
@@ -206,8 +238,7 @@ function recompute(fit) {
   S.order = active.map(m => m.id);
   if (fit) fitView(); else clampPan();
   updateStats();
-  const lm = document.getElementById("legend-max");
-  if (lm) lm.textContent = `1 → ${S.maxCount[S.gender]}`;
+  updateLegend();
   draw();
 }
 
@@ -306,6 +337,7 @@ function draw() {
   const diag = getCss("--diag");
   const upcomingCol = getCss("--upcoming");
   const atPresent = present();
+  const combined = isCombined();
   const span = Math.ceil(cell) + (cell > 7 ? 0 : 1);
   for (let r = r0; r < r1; r++) {
     const a = S.order[r];
@@ -314,6 +346,7 @@ function draw() {
       const b = S.order[c];
       let col;
       if (a === b) col = diag;
+      else if (combined) col = combinedColor(a, b);
       else {
         const cnt = countAsOf(a, b);
         if (!cnt && S.showUpcoming && atPresent && isUpcoming(a, b)) col = upcomingCol;
@@ -450,6 +483,15 @@ function drawLegend() {
   }
 }
 
+// Swap the meetings-ramp legend for the 4-category key in combined view (and vice versa).
+function updateLegend() {
+  const ramp = document.getElementById("legend-ramp");
+  const comb = document.getElementById("legend-combined");
+  if (ramp && comb) { ramp.hidden = isCombined(); comb.hidden = !isCombined(); }
+  const lm = document.getElementById("legend-max");
+  if (lm && !isCombined()) lm.textContent = `1 → ${S.maxCount[S.gender]}`;
+}
+
 /* ---------- interaction ---------- */
 function cellAt(mx, my) {
   if (mx < MARGIN || my < MARGIN) return null;
@@ -465,6 +507,14 @@ function showTooltip(cellRC, mx, my) {
   let body;
   if (A.id === B.id) {
     body = `<div class="vs">${A.name}</div><div class="dim">${A.confed}${A.defunct ? " · defunct" : ""}</div>`;
+  } else if (isCombined()) {
+    const mc = countAsOf(A.id, B.id, "men"), wc = countAsOf(A.id, B.id, "women");
+    const asOf = present() ? "" : ` by ${S.year}`;
+    const line = (label, c, col) =>
+      `<div><span class="n" style="color:${col}">${label}</span> `
+      + (c ? `${c} meeting${c === 1 ? "" : "s"}${asOf}` : `never played${asOf}`) + `</div>`;
+    body = `<div class="vs">${A.name} <span class="dim">v</span> ${B.name}</div>`
+      + line("Men's", mc, "var(--men-only)") + line("Women's", wc, "var(--women-only)");
   } else {
     const cnt = countAsOf(A.id, B.id);
     const asOf = present() ? "" : ` by ${S.year}`;
@@ -606,12 +656,58 @@ function openPair(aId, bId) {
   card.querySelector(".dx").onclick = closeDetail;
   // token guards against a slow fetch resolving after the user clicked elsewhere
   const token = (card.dataset.token = String(Date.now()));
-  ensureMatches(gender)
-    .then(data => { if (card.dataset.token === token) renderDetailBody(card, A, B, data, gender); })
-    .catch(() => {
-      const db = card.querySelector(".db");
-      if (db && card.dataset.token === token) db.textContent = "Couldn't load match details.";
-    });
+  const fail = () => {
+    const db = card.querySelector(".db");
+    if (db && card.dataset.token === token) db.textContent = "Couldn't load match details.";
+  };
+  if (isCombined()) {
+    Promise.all([ensureMatches("men"), ensureMatches("women")])
+      .then(([dm, dw]) => { if (card.dataset.token === token) renderDetailCombined(card, A, B, dm, dw); })
+      .catch(fail);
+  } else {
+    ensureMatches(gender)
+      .then(data => { if (card.dataset.token === token) renderDetailBody(card, A, B, data, gender); })
+      .catch(fail);
+  }
+}
+
+// One gender's head-to-head as an HTML block (summary line + newest-first meeting rows).
+function historyHtml(A, B, data) {
+  const lo = Math.min(A.id, B.id), hi = Math.max(A.id, B.id);
+  const list = data.pairs[`${lo},${hi}`] || [];
+  const T = data.tournaments;
+  if (!list.length) return { count: 0, html: `<div class="never">Never played.</div>` };
+  const aIsLo = A.id === lo;
+  let w = 0, d = 0, l = 0, gf = 0, ga = 0, unknown = 0;
+  const rows = [];
+  for (let i = list.length - 1; i >= 0; i--) {
+    const [yr, glo, ghi, ti] = list[i];
+    const known = glo != null && ghi != null;
+    const sa = aIsLo ? glo : ghi, sb = aIsLo ? ghi : glo;
+    let res = "u";
+    if (known) { gf += sa; ga += sb; res = sa > sb ? "w" : sa < sb ? "l" : "d"; if (res === "w") w++; else if (res === "l") l++; else d++; }
+    else { unknown++; }
+    rows.push(`<div class="mr ${res}"><span class="yr">${yr == null ? "?" : yr}</span>`
+      + `<span class="sc">${known ? `${sa}–${sb}` : "—"}</span>`
+      + `<span class="tn" title="${T[ti] || ""}">${T[ti] || ""}</span></div>`);
+  }
+  const html =
+    `<div class="sum"><b>${list.length}</b> meeting${list.length === 1 ? "" : "s"} · `
+    + `<span class="w">${w}W</span> <span class="d">${d}D</span> <span class="l">${l}L</span>`
+    + (unknown ? ` <span class="dim">+${unknown}?</span>` : "") + ` · `
+    + `<span class="gd">${gf}–${ga}</span> <span class="dim">(${A.name})</span></div>`
+    + `<div class="mlist">${rows.join("")}</div>`;
+  return { count: list.length, html };
+}
+
+function renderDetailCombined(card, A, B, dataMen, dataWomen) {
+  const db = card.querySelector(".db");
+  if (!db) return;
+  db.classList.remove("dim");
+  const men = historyHtml(A, B, dataMen), women = historyHtml(A, B, dataWomen);
+  db.innerHTML =
+    `<div class="det-gender"><span class="det-label" style="color:var(--men-only)">Men's</span>${men.html}</div>`
+    + `<div class="det-gender"><span class="det-label" style="color:var(--women-only)">Women's</span>${women.html}</div>`;
 }
 
 function renderDetailBody(card, A, B, data, gender) {
@@ -652,6 +748,7 @@ function renderDetailBody(card, A, B, data, gender) {
 
 /* ---------- single-team focus (one team manually selected) ---------- */
 function renderTeamFocus(teamId) {
+  if (isCombined()) { renderTeamFocusCombined(teamId); return; }
   const team = S.byId.get(teamId);
   const panel = document.getElementById("teamfocus");
   if (!team) { panel.hidden = true; return; }
@@ -691,10 +788,74 @@ function renderTeamFocus(teamId) {
   };
   panel.hidden = false;
 
-  document.getElementById("headline").innerHTML =
+  const headline = document.getElementById("headline");
+  headline.classList.remove("combined", "allplayed");
+  headline.innerHTML =
     `<span class="big">${never.length}</span>`
     + `<span class="rest">opponents <b>${team.name}</b> has never played `
     + `(${gLabel}) — they've met <b>${played.length}</b> of ${rows.length} possible.</span>`;
+}
+
+// Single-team focus in combined view: opponents coloured by which game(s) they've met in.
+function renderTeamFocusCombined(teamId) {
+  const team = S.byId.get(teamId);
+  const panel = document.getElementById("teamfocus");
+  if (!team) { panel.hidden = true; return; }
+
+  let pool = S.members.filter(m => m.id !== teamId);
+  if (S.includeDefunct) pool = pool.concat(S.defunct.members.filter(m => m.id !== teamId));
+  const rows = pool.map(o => {
+    const pm = lookup(teamId, o.id, "men"), pw = lookup(teamId, o.id, "women");
+    const mc = pm ? pm[0] : 0, wc = pw ? pw[0] : 0;
+    const cat = (mc > 0 ? 1 : 0) | (wc > 0 ? 2 : 0);
+    const last = Math.max(pm ? pm[2] : 0, pw ? pw[2] : 0) || null;
+    return { o, mc, wc, total: mc + wc, cat, last };
+  }).sort((a, b) => b.total - a.total || a.o.name.localeCompare(b.o.name));
+
+  const catColor = c => c === 3 ? getCss("--both") : c === 1 ? getCss("--men-only")
+    : c === 2 ? getCss("--women-only") : getCss("--grid-strong");
+  const played = rows.filter(r => r.cat);
+  const never = rows.filter(r => !r.cat);
+  const maxC = played.length ? played[0].total : 1;
+  const both = played.filter(r => r.cat === 3).length;
+  const menOnly = played.filter(r => r.cat === 1).length;
+  const womenOnly = played.filter(r => r.cat === 2).length;
+
+  const row = r =>
+    `<button class="tf-row${r.cat ? "" : " none"}" data-opp="${r.o.id}" `
+    + `title="men's: ${r.mc || "never"} · women's: ${r.wc || "never"}">`
+    + `<span class="tf-dot" style="background:${catColor(r.cat)}"></span>`
+    + `<span class="tf-name">${r.o.name}</span>`
+    + `<span class="tf-bar"><span style="width:${Math.round(100 * r.total / maxC)}%"></span></span>`
+    + `<span class="tf-n">${r.total || "—"}</span>`
+    + `<span class="tf-last">${r.last || ""}</span></button>`;
+
+  panel.innerHTML =
+    `<div class="tf-head">
+       <div class="tf-title">${team.name} — opponents by game played in</div>
+       <div class="tf-sum"><b style="color:var(--both)">${both}</b> both ·
+         <b style="color:var(--men-only)">${menOnly}</b> men's-only ·
+         <b style="color:var(--women-only)">${womenOnly}</b> women's-only ·
+         <b class="never">${never.length}</b> neither</div>
+     </div>
+     <div class="tf-list">${played.map(row).join("")}`
+    + (never.length ? `<div class="tf-sep">Never met in either (${never.length})</div>` : "")
+    + `${never.map(row).join("")}</div>`;
+  panel.onclick = e => {
+    const b = e.target.closest(".tf-row");
+    if (b) openPair(teamId, +b.dataset.opp);
+  };
+  panel.hidden = false;
+
+  const headline = document.getElementById("headline");
+  headline.classList.remove("allplayed");
+  headline.classList.add("combined");
+  headline.innerHTML =
+    `<span class="big">${both}</span>`
+    + `<span class="rest">opponents <b>${team.name}</b> has met in <b>both</b> games — `
+    + `<b style="color:var(--men-only)">${menOnly}</b> men's-only, `
+    + `<b style="color:var(--women-only)">${womenOnly}</b> women's-only, `
+    + `${never.length} never met.</span>`;
 }
 
 /* On mobile the controls sit below the grid, so move the timeline scrubber up into the stage
@@ -717,10 +878,15 @@ function buildControls() {
       document.querySelectorAll("#gender button").forEach(b => b.classList.remove("active"));
       btn.classList.add("active");
       S.gender = btn.dataset.gender;
+      // The never/upcoming highlights are single-dataset concepts; combined has its own key.
+      const inCombined = isCombined();
+      document.getElementById("opt-highlight").disabled = inCombined;
+      document.getElementById("opt-upcoming").disabled = inCombined;
       buildTeamList();           // refresh the rank shown per gender
       updateUpcomingCount();
       renderUpcomingList();
-      if (!present()) ensureYears(S.gender).then(draw);
+      updateLegend();
+      if (!present()) ensureYearsForView().then(draw);
       recompute(false);
     });
   });
@@ -766,9 +932,9 @@ function buildControls() {
   scrub.addEventListener("input", e => {
     S.year = +e.target.value;
     setYearLabel();
-    if (!present() && !S.yearsByPair[S.gender]) {       // lazy-load per-pair years on first scrub
+    if (!present() && !yearsLoadedForView()) {          // lazy-load per-pair years on first scrub
       document.getElementById("year-label").textContent = S.year + " · loading…";
-      ensureYears(S.gender).then(() => { setYearLabel(); updateStats(); draw(); });
+      ensureYearsForView().then(() => { setYearLabel(); updateStats(); draw(); });
     }
     updateStats(); draw();
   });
@@ -820,8 +986,8 @@ function buildTeamList() {
   for (const m of pool) {
     if (q && !m.name.toLowerCase().includes(q)) continue;
     const lab = document.createElement("label");
-    const r = S.gender === "men" ? m.mens_rank : m.womens_rank;
-    const rk = r ? `#${r}` : (m.defunct ? "defunct" : "unranked");
+    const r = isCombined() ? rankOf(m) : (S.gender === "men" ? m.mens_rank : m.womens_rank);
+    const rk = (r && r !== Infinity) ? `#${r}` : (m.defunct ? "defunct" : "unranked");
     lab.innerHTML = `<input type="checkbox" data-id="${m.id}" ${S.manual.has(m.id) ? "checked" : ""}>
       ${m.name} <span class="rk">${m.confed} ${rk}</span>`;
     list.appendChild(lab);
@@ -841,7 +1007,9 @@ function setYearLabel() {
 
 function updateUpcomingCount() {
   const el = document.getElementById("upcoming-count");
-  if (el) { const n = S.upcoming[S.gender].size; el.textContent = n ? `(${n})` : "(none)"; }
+  if (!el) return;
+  if (isCombined()) { el.textContent = "(men's / women's only)"; return; }
+  const n = S.upcoming[S.gender].size; el.textContent = n ? `(${n})` : "(none)";
 }
 
 function fmtDate(iso) {
@@ -854,6 +1022,7 @@ function renderUpcomingList() {
   const section = document.getElementById("upcoming-section");
   const list = document.getElementById("upcoming-list");
   if (!section) return;
+  if (isCombined()) { section.hidden = true; list.innerHTML = ""; return; }
   const cut = new Date(S.today + "T00:00:00"); cut.setDate(cut.getDate() - 14);
   const cutoff = cut.toISOString().slice(0, 10);
   const items = [];
@@ -880,6 +1049,7 @@ function renderUpcomingList() {
 
 /* ---------- stats ---------- */
 function updateStats() {
+  if (isCombined()) { updateStatsCombined(); return; }
   const n = S.order.length;
   const total = n * (n - 1) / 2;
   let met = 0;
@@ -891,6 +1061,7 @@ function updateStats() {
   const filter = (S.manual.size || S.showConfeds.size < S.confedOrder.length) ? " in this view" : "";
   const scope = present() ? filter : `${filter} by ${S.year}`;
   const headline = document.getElementById("headline");
+  headline.classList.remove("combined");
   const pl = (k, w) => (k === 1 ? w : w + "s");
 
   let html;
@@ -913,6 +1084,37 @@ function updateStats() {
       + `${total === 1 ? "has" : "have"} ever happened.</span>`;
   }
   headline.innerHTML = html;
+}
+
+// Combined-view headline: how many pairings have met in both games vs one vs neither.
+function updateStatsCombined() {
+  const n = S.order.length;
+  const total = n * (n - 1) / 2;
+  const headline = document.getElementById("headline");
+  headline.classList.remove("allplayed");
+  headline.classList.add("combined");
+  if (total === 0) {
+    headline.innerHTML = `<span class="big">—</span>`
+      + `<span class="rest">Pick at least two teams or confederations to compare.</span>`;
+    return;
+  }
+  let both = 0, menOnly = 0, womenOnly = 0;
+  for (let i = 0; i < n; i++)
+    for (let j = i + 1; j < n; j++) {
+      const cat = metCategory(S.order[i], S.order[j]);
+      if (cat === 3) both++; else if (cat === 1) menOnly++; else if (cat === 2) womenOnly++;
+    }
+  const neither = total - both - menOnly - womenOnly;
+  const filter = (S.manual.size || S.showConfeds.size < S.confedOrder.length) ? " in this view" : "";
+  const scope = present() ? filter : `${filter} as of ${S.year}`;
+  const pl = (k, w) => (k === 1 ? w : w + "s");
+  headline.innerHTML =
+    `<span class="big">${both.toLocaleString()}</span>`
+    + `<span class="rest">${pl(both, "pairing")} ${both === 1 ? "has" : "have"} met in `
+    + `<b>both</b> the men's and women's game${scope} — `
+    + `<b style="color:var(--men-only)">${menOnly.toLocaleString()}</b> men's-only, `
+    + `<b style="color:var(--women-only)">${womenOnly.toLocaleString()}</b> women's-only, `
+    + `${neither.toLocaleString()} in neither, of ${total.toLocaleString()} possible.</span>`;
 }
 
 /* ---------- boot ---------- */

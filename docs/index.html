@@ -20,6 +20,7 @@
       <div class="seg" id="gender" role="tablist" aria-label="Dataset">
         <button data-gender="men" class="active">Men's</button>
         <button data-gender="women">Women's</button>
+        <button data-gender="both">Both</button>
       </div>
     </section>
 
@@ -68,12 +69,23 @@
     </section>
 
     <section class="legend">
-      <div class="row"><span class="lbl">Meetings</span><span id="legend-max" class="hint"></span></div>
-      <canvas id="legend-canvas" width="220" height="14"></canvas>
-      <div class="legend-keys">
-        <span><i class="sw" id="sw-never"></i> never played</span>
-        <span><i class="sw" id="sw-upcoming"></i> upcoming</span>
-        <span><i class="sw" id="sw-diag"></i> same team</span>
+      <div id="legend-ramp">
+        <div class="row"><span class="lbl">Meetings</span><span id="legend-max" class="hint"></span></div>
+        <canvas id="legend-canvas" width="220" height="14"></canvas>
+        <div class="legend-keys">
+          <span><i class="sw" id="sw-never"></i> never played</span>
+          <span><i class="sw" id="sw-upcoming"></i> upcoming</span>
+          <span><i class="sw" id="sw-diag"></i> same team</span>
+        </div>
+      </div>
+      <div id="legend-combined" hidden>
+        <div class="row"><span class="lbl">Have played each other in…</span></div>
+        <div class="legend-keys legend-combined-keys">
+          <span><i class="sw" id="sw-both"></i> both</span>
+          <span><i class="sw" id="sw-men"></i> men's only</span>
+          <span><i class="sw" id="sw-women"></i> women's only</span>
+          <span><i class="sw" id="sw-neither"></i> neither</span>
+        </div>
       </div>
     </section>
 
