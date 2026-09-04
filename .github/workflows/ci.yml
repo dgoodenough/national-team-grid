@@ -1,16 +1,23 @@
 name: CI
 
 # The site is a committed static build, so the artifacts in docs/data are the product.
-# These checks run on every push and PR, and refresh.yml runs the same suite before it is
-# allowed to commit a daily rebuild.
+# These checks run on every pull request and on main, and refresh.yml runs the same suite
+# before it is allowed to commit a daily rebuild.
 on:
+  # push is scoped to the default branch on purpose: with `branches: ["**"]` every push to
+  # a PR branch fired this workflow twice, once for the push and once for the pull_request.
   push:
-    branches: ["**"]
+    branches: [main]
   pull_request:
   workflow_dispatch: {}
 
 permissions:
   contents: read
+
+# A rapid follow-up push supersedes the run it interrupted rather than queueing behind it.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:
