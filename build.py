@@ -14,9 +14,15 @@ Pipeline:
   4. Aggregate, for each unordered pair of members, the total meetings + first/last year,
      separately for the men's and women's archives.
   5. Emit compact JSON into docs/data/ for the static frontend:
-       members.json, matrix_men.json, matrix_women.json, defunct.json
+       members.json, matrix_men.json, matrix_women.json, defunct.json,
+       matches_*.json (per-meeting detail), years_*.json (slim per-pair meeting years),
+       upcoming.json - plus docs/feed.json + docs/feed.xml (the FIFAGami fixture feed).
+  6. Validate the artifacts before anything is written where anyone will see it.
 
-Run:  python build.py
+Run:  python build.py             # build from cached sources (downloads what is missing)
+      python build.py --refresh   # force re-download of every source
+      python build.py --derive    # regenerate only the derived artifacts (years, feed,
+                                  # flags) from docs/data - no network, seconds not minutes
 """
 from __future__ import annotations
 
@@ -26,6 +32,7 @@ import sys
 import urllib.request
 from datetime import date, datetime, timedelta
 from pathlib import Path
+from xml.sax.saxutils import escape as xml_escape
 
 ROOT = Path(__file__).resolve().parent
 RAW = ROOT / "data" / "raw"
@@ -57,6 +64,9 @@ SOURCES = {
 }
 
 CONFED_ORDER = ["AFC", "CAF", "CONCACAF", "CONMEBOL", "OFC", "UEFA"]
+
+# Canonical public URL - absolute links in the syndication feeds and share cards.
+SITE_URL = "https://dgoodenough.github.io/national-team-grid/"
 
 # Ranking-snapshot team name  ->  canonical match-data team name.
 # (Only the names that don't already match the martj42 spelling verbatim.)
@@ -199,6 +209,36 @@ def download_sources(force: bool = False) -> None:
 def read_csv(path: Path, encoding: str = "utf-8") -> list[dict]:
     with open(path, encoding=encoding, newline="") as f:
         return list(csv.DictReader(f))
+
+
+def load_flags() -> dict[str, str]:
+    """FIFA/IOC three-letter code -> flag emoji, from data/iso2.csv.
+
+    Most flags are the two regional-indicator letters for the country's ISO 3166-1
+    alpha-2 code. The three UK home nations with RGI tag sequences carry them verbatim
+    in the `emoji` column; Kosovo and Northern Ireland have no emoji flag at all and
+    map to "" (the frontend falls back to the three-letter code)."""
+    path = REF / "iso2.csv"
+    if not path.exists():
+        log("  WARN: data/iso2.csv missing - team flags will be omitted")
+        return {}
+    with open(path, encoding="utf-8", newline="") as f:
+        rows = list(csv.DictReader(line for line in f if not line.startswith("#")))
+    flags = {}
+    for r in rows:
+        code = (r.get("code") or "").strip()
+        iso2 = (r.get("iso2") or "").strip()
+        emoji = (r.get("emoji") or "").strip()
+        if not code:
+            continue
+        if emoji:
+            flags[code] = emoji
+        elif len(iso2) == 2 and iso2.isalpha():
+            # regional indicator symbols: 'A' (U+0041) -> U+1F1E6
+            flags[code] = "".join(chr(0x1F1E6 + ord(ch.upper()) - ord("A")) for ch in iso2)
+        else:
+            flags[code] = ""
+    return flags
 
 
 def year_of(datestr: str) -> int | None:
@@ -362,6 +402,15 @@ def build_members() -> tuple[list[dict], dict[str, int], dict]:
             log(f"  note: {len(miss)} {g}'s ranking names matched no member "
                 f"(ignored): {miss[:8]}{' …' if len(miss) > 8 else ''}")
 
+    # Flag emoji per team (blank where no emoji flag exists, e.g. Kosovo, Northern Ireland).
+    flags = load_flags()
+    unflagged = [m["name"] for m in members if not flags.get(m["code"])]
+    for m in members:
+        m["flag"] = flags.get(m["code"], "")
+    if unflagged:
+        log(f"  flags: {len(members) - len(unflagged)}/{len(members)} teams have one "
+            f"(no emoji flag for: {', '.join(unflagged)})")
+
     # Stable default ordering: confederation, then men's rank (unranked last), then name.
     members.sort(key=lambda m: (CONFED_ORDER.index(m["confed"]),
                                 m["mens_rank"] if m["mens_rank"] is not None else 10**9,
@@ -469,16 +518,300 @@ def pairs_to_json(pairs: dict[tuple[int, int], list]) -> tuple[list, int]:
     return out, max_count
 
 
+# --- Derived artifacts: slim meeting-years, syndication feed -----------------
+def years_payload(pair_years: dict[str, list[int]],
+                  undated: dict[str, int] | None = None) -> dict:
+    """Delta-encode each pair's meeting years: [firstYear, d1, d2, ...], every d >= 0.
+
+    The frontend needs one thing from the match archive to drive the timeline scrubber -
+    "how many times had these two met by year Y" - which is a prefix count over this list.
+    Shipping just the years, delta-encoded, is a fraction of the size of matches_*.json,
+    so the scrubber no longer blocks on a multi-hundred-KB download. `undated` carries the
+    handful of meetings whose source row has no parseable date, so the client can say
+    "+N undated" rather than silently disagreeing with the matrix total."""
+    pairs = {}
+    for key, ys in pair_years.items():
+        ys = sorted(y for y in ys if y is not None)
+        if not ys:
+            continue
+        enc = [ys[0]]
+        enc.extend(b - a for a, b in zip(ys, ys[1:]))
+        pairs[key] = enc
+    return {"encoding": "delta", "pairs": pairs,
+            "undated": {k: v for k, v in (undated or {}).items() if v}}
+
+
+def write_years(gender: str, details: dict[tuple[int, int], list]) -> int:
+    """docs/data/years_<gender>.json from the per-meeting detail."""
+    pair_years, undated = {}, {}
+    for (lo, hi), meetings in details.items():
+        key = f"{lo},{hi}"
+        pair_years[key] = [m[0] for m in meetings if m[0] is not None]
+        n_undated = sum(1 for m in meetings if m[0] is None)
+        if n_undated:
+            undated[key] = n_undated
+    payload = years_payload(pair_years, undated)
+    (OUT / f"years_{gender}.json").write_text(
+        json.dumps(payload, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+    return sum(len(v) for v in payload["pairs"].values())
+
+
+def build_feed_items(members: list[dict], upcoming: dict, today: str,
+                     limit: int = 60) -> list[dict]:
+    """Upcoming FIFAGami as feed items: pairs of nations that have never met, with a
+    fixture on the calendar. Soonest first, past fixtures dropped."""
+    by_id = {m["id"]: m for m in members}
+    items = []
+    for gender in ("men", "women"):
+        for row in upcoming.get(gender, []):
+            lo, hi, when, comp = row[0], row[1], row[2], row[3]
+            a, b = by_id.get(lo), by_id.get(hi)
+            if not a or not b or when < today:
+                continue
+            label = "men's" if gender == "men" else "women's"
+            link = f"{SITE_URL}?view=fixtures&g={gender}&up=1&pair={lo},{hi}"
+            items.append({
+                "guid": f"fifagami-{gender}-{lo}-{hi}-{when}",
+                "gender": gender,
+                "date": when,
+                "competition": comp,
+                "title": f"{a['name']} v {b['name']} - first ever {label} meeting",
+                "url": link,
+                "text": (f"{a['name']} and {b['name']} have never played a {label} "
+                         f"international against each other. They are scheduled to meet "
+                         f"for the first time on {when} ({comp})."),
+            })
+    items.sort(key=lambda it: (it["date"], it["title"]))
+    return items[:limit]
+
+
+def write_feeds(members: list[dict], upcoming: dict, generated: str) -> int:
+    """docs/feed.json (JSON Feed 1.1) + docs/feed.xml (RSS 2.0).
+
+    Every item is a fixture between two nations that have never met. `guid` is stable per
+    pair+date, so a reader shows an entry once, when the fixture first appears on the
+    calendar - which is exactly the thing worth being notified about. Publication date is
+    the build date (when this entry was published); the kick-off date is in the title."""
+    docs = ROOT / "docs"
+    items = build_feed_items(members, upcoming, date.today().isoformat())
+    title = "FIFAGami - first-ever international meetings"
+    desc = ("Scheduled fixtures between national teams that have never played each other, "
+            "from the National Team Matchup Grid.")
+    pub = f"{generated}T00:00:00Z"
+
+    docs.joinpath("feed.json").write_text(json.dumps({
+        "version": "https://jsonfeed.org/version/1.1",
+        "title": title,
+        "home_page_url": SITE_URL,
+        "feed_url": SITE_URL + "feed.json",
+        "description": desc,
+        "items": [{
+            "id": it["guid"],
+            "url": it["url"],
+            "title": it["title"],
+            "content_text": it["text"],
+            "date_published": pub,
+            "tags": [it["gender"], it["competition"]],
+        } for it in items],
+    }, ensure_ascii=False, indent=1), encoding="utf-8")
+
+    rss_items = "".join(
+        "    <item>\n"
+        f"      <title>{xml_escape(it['title'])}</title>\n"
+        f"      <link>{xml_escape(it['url'])}</link>\n"
+        f"      <guid isPermaLink=\"false\">{xml_escape(it['guid'])}</guid>\n"
+        f"      <pubDate>{rfc822(generated)}</pubDate>\n"
+        f"      <category>{xml_escape(it['competition'])}</category>\n"
+        f"      <description>{xml_escape(it['text'])}</description>\n"
+        "    </item>\n" for it in items)
+    docs.joinpath("feed.xml").write_text(
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">\n'
+        "  <channel>\n"
+        f"    <title>{xml_escape(title)}</title>\n"
+        f"    <link>{xml_escape(SITE_URL)}</link>\n"
+        f"    <description>{xml_escape(desc)}</description>\n"
+        "    <language>en</language>\n"
+        f'    <atom:link href="{xml_escape(SITE_URL)}feed.xml" rel="self" '
+        'type="application/rss+xml"/>\n'
+        f"    <lastBuildDate>{rfc822(generated)}</lastBuildDate>\n"
+        f"{rss_items}"
+        "  </channel>\n"
+        "</rss>\n", encoding="utf-8")
+    return len(items)
+
+
+def rfc822(iso_day: str) -> str:
+    """YYYY-MM-DD -> RFC 822 date, which is what RSS pubDate wants."""
+    d = datetime.strptime(iso_day, "%Y-%m-%d")
+    days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+    months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+              "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+    return (f"{days[d.weekday()]}, {d.day:02d} {months[d.month - 1]} {d.year} "
+            f"00:00:00 +0000")
+
+
+# --- Validation --------------------------------------------------------------
+class BuildError(AssertionError):
+    """An artifact is wrong enough that it must not be published."""
+
+
+def validate_artifacts(out: Path = OUT, docs: Path | None = None) -> list[str]:
+    """Check the built artifacts hang together. Raises BuildError on anything that would
+    ship a broken or misleading site; returns a list of non-fatal notes.
+
+    This runs at the end of every build AND in tests/test_build.py, so the daily
+    auto-refresh cannot quietly commit a site built from a source that changed shape."""
+    docs = docs or out.parent
+    notes: list[str] = []
+
+    def need(cond, msg):
+        if not cond:
+            raise BuildError(msg)
+
+    def load(path: Path):
+        need(path.exists(), f"{path.name} is missing")
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as e:
+            raise BuildError(f"{path.name} is not valid JSON: {e}") from e
+
+    members_doc = load(out / "members.json")
+    members = members_doc.get("members", [])
+    need(len(members) >= 200, f"expected ~211 current members, got {len(members)}")
+    need([m["id"] for m in members] == list(range(len(members))),
+         "member ids must be contiguous 0..n-1 in file order")
+    need(len({m["name"] for m in members}) == len(members), "duplicate member names")
+    for key in ("confederation_order", "data_through", "generated"):
+        need(members_doc.get(key), f"members.json is missing {key}")
+    confeds = set(members_doc["confederation_order"])
+    bad_confed = sorted({m["confed"] for m in members} - confeds)
+    need(not bad_confed, f"members with an unknown confederation: {bad_confed}")
+    for g in ("men", "women"):
+        through = members_doc["data_through"].get(g, "")
+        need(len(through) == 10 and through[4] == "-",
+             f"data_through.{g} should be an ISO date, got {through!r}")
+    flagged = sum(1 for m in members if m.get("flag"))
+    need(flagged >= len(members) - 5,
+         f"only {flagged}/{len(members)} members carry a flag - check data/iso2.csv")
+
+    defunct = load(out / "defunct.json")
+    ids = {m["id"] for m in members} | {m["id"] for m in defunct.get("members", [])}
+
+    for g in ("men", "women"):
+        matrix = load(out / f"matrix_{g}.json")
+        need(matrix["pairs"], f"matrix_{g}.json has no pairs")
+        need(matrix["max_count"] == max(p[2] for p in matrix["pairs"]),
+             f"matrix_{g}.json max_count disagrees with its pairs")
+        # The match detail spans both layers, so pair-level checks do too: current members
+        # live in matrix_<g>.json, teams with no modern successor in defunct.json.
+        pairs = matrix["pairs"] + defunct.get(f"pairs_{g}", [])
+        seen = set()
+        for i, j, c, fy, ly in pairs:
+            need(i in ids and j in ids, f"matrix_{g}: pair ({i},{j}) references an unknown team")
+            need(i < j, f"matrix_{g}: pair ({i},{j}) is not stored low-id-first")
+            need((i, j) not in seen, f"matrix_{g}: duplicate pair ({i},{j})")
+            seen.add((i, j))
+            need(c >= 1, f"matrix_{g}: pair ({i},{j}) has a non-positive count")
+            need(fy is None or ly is None or fy <= ly,
+                 f"matrix_{g}: pair ({i},{j}) has firstYear after lastYear")
+
+        counts = {f"{i},{j}": c for i, j, c, _, _ in pairs}
+        firsts = {f"{i},{j}": fy for i, j, _, fy, _ in pairs}
+        years = load(out / f"years_{g}.json")
+        need(years.get("encoding") == "delta", f"years_{g}.json is not delta-encoded")
+        undated = years.get("undated", {})
+        for key, enc in years["pairs"].items():
+            need(key in counts, f"years_{g}: pair {key} is absent from the matrix")
+            need(all(d >= 0 for d in enc[1:]), f"years_{g}: pair {key} has a negative delta")
+            need(len(enc) + undated.get(key, 0) == counts[key],
+                 f"years_{g}: pair {key} has {len(enc)} dated + "
+                 f"{undated.get(key, 0)} undated meetings, matrix says {counts[key]}")
+            need(enc[0] == firsts[key],
+                 f"years_{g}: pair {key} starts at {enc[0]}, matrix firstYear is {firsts[key]}")
+        missing_years = set(counts) - set(years["pairs"]) - set(undated)
+        need(not missing_years,
+             f"years_{g}: {len(missing_years)} played pairs have no meeting years")
+
+        matches = load(out / f"matches_{g}.json")
+        need(set(matches["pairs"]) == set(counts),
+             f"matches_{g}.json and matrix_{g}.json cover different pairs")
+        n_t = len(matches["tournaments"])
+        for key, lst in matches["pairs"].items():
+            need(len(lst) == counts[key], f"matches_{g}: pair {key} has the wrong meeting count")
+            for _yr, _a, _b, ti in lst:
+                need(0 <= ti < n_t, f"matches_{g}: pair {key} has a bad tournament index")
+
+        played = {f"{i},{j}" for i, j, _, _, _ in matrix["pairs"]}
+        upcoming = load(out / "upcoming.json")
+        for lo, hi, when, _comp in upcoming.get(g, []):
+            need(lo in ids and hi in ids, f"upcoming {g}: ({lo},{hi}) references an unknown team")
+            need(f"{lo},{hi}" not in played,
+                 f"upcoming {g}: ({lo},{hi}) is listed as a first meeting but has already met")
+            need(len(when) == 10, f"upcoming {g}: ({lo},{hi}) has a malformed date {when!r}")
+        if not upcoming.get(g):
+            notes.append(f"upcoming.json has no {g}'s fixtures - ESPN/martj42 may be down")
+
+    feed = load(docs / "feed.json")
+    need(feed.get("version", "").startswith("https://jsonfeed.org/"),
+         "feed.json is not a JSON Feed")
+    need(len({it["id"] for it in feed["items"]}) == len(feed["items"]),
+         "feed.json has duplicate item ids")
+    rss = (docs / "feed.xml")
+    need(rss.exists(), "feed.xml is missing")
+    head = rss.read_text(encoding="utf-8")[:64]
+    need(head.startswith("<?xml"), "feed.xml does not start with an XML declaration")
+    return notes
+
+
+# --- Derived-only rebuild (no network) ---------------------------------------
+def derive_only() -> int:
+    """Regenerate just the artifacts that are pure functions of what is already in
+    docs/data: the flag column on members.json, years_*.json, and the feeds. Useful for
+    iterating on the frontend (or on this file) without re-downloading ~60 MB of sources."""
+    log("[derive] Regenerating derived artifacts from docs/data (no network)...")
+    members_doc = json.loads((OUT / "members.json").read_text(encoding="utf-8"))
+    flags = load_flags()
+    for m in members_doc["members"]:
+        m["flag"] = flags.get(m["code"], "")
+    (OUT / "members.json").write_text(
+        json.dumps(members_doc, ensure_ascii=False), encoding="utf-8")
+    log(f"  members.json: flags for "
+        f"{sum(1 for m in members_doc['members'] if m['flag'])} teams")
+
+    for g in ("men", "women"):
+        matches = json.loads((OUT / f"matches_{g}.json").read_text(encoding="utf-8"))
+        details = {tuple(int(x) for x in k.split(",")): v for k, v in matches["pairs"].items()}
+        n = write_years(g, details)
+        kb = (OUT / f"years_{g}.json").stat().st_size / 1024
+        mkb = (OUT / f"matches_{g}.json").stat().st_size / 1024
+        log(f"  years_{g}.json: {n} dated meetings, {kb:.0f} KB "
+            f"(vs {mkb:.0f} KB for the full match detail)")
+
+    upcoming = json.loads((OUT / "upcoming.json").read_text(encoding="utf-8"))
+    generated = members_doc.get("generated") or date.today().isoformat()
+    n_feed = write_feeds(members_doc["members"], upcoming, generated)
+    log(f"  feed.json + feed.xml: {n_feed} upcoming first-ever meetings")
+
+    for note in validate_artifacts():
+        log(f"  note: {note}")
+    log("\nDerived artifacts OK.")
+    return 0
+
+
 # --- Main --------------------------------------------------------------------
 def main() -> int:
-    log("[1/5] Downloading sources...")
+    if "--derive" in sys.argv:
+        return derive_only()
+
+    log("[1/6] Downloading sources...")
     download_sources(force="--refresh" in sys.argv)
 
-    log("[2/5] Building canonical member table...")
+    log("[2/6] Building canonical member table...")
     members, name_to_id, rmeta = build_members()
     log(f"  {len(members)} current FIFA members")
 
-    log("[3/5] Resolving defunct teams present in match data...")
+    log("[3/6] Resolving defunct teams present in match data...")
     resolver = build_name_resolver(name_to_id)
     # Assign defunct ids in a separate high range so they never collide with members.
     defunct_present = []
@@ -486,7 +819,7 @@ def main() -> int:
         defunct_present.append(name)
     defunct_ids = {name: 100000 + i for i, name in enumerate(defunct_present)}
 
-    log("[4/5] Aggregating pairwise meetings...")
+    log("[4/6] Aggregating pairwise meetings...")
     men_pairs, men_def, men_unmatched, men_details, men_tourn, men_up = aggregate(
         "results_men.csv", resolver, name_to_id, defunct_ids)
     wom_pairs, wom_def, wom_unmatched, wom_details, wom_tourn, wom_up = aggregate(
@@ -507,7 +840,7 @@ def main() -> int:
     men_def_json, _ = pairs_to_json(men_def)
     wom_def_json, _ = pairs_to_json(wom_def)
 
-    log("[5/5] Writing JSON artifacts...")
+    log("[5/6] Writing JSON artifacts...")
     OUT.mkdir(parents=True, exist_ok=True)
     generated = datetime.now().strftime("%Y-%m-%d")
     data_through = {"men": latest_match_date("results_men.csv"),
@@ -548,6 +881,11 @@ def main() -> int:
     n_men = write_matches("men", men_details, men_tourn)
     n_wom = write_matches("women", wom_details, wom_tourn)
 
+    # Slim per-pair meeting years. The timeline scrubber needs only "how many by year Y",
+    # so it loads this instead of the full match detail.
+    y_men = write_years("men", men_details)
+    y_wom = write_years("women", wom_details)
+
     # Upcoming FIFAGami: scheduled fixtures between members who have NEVER met, from
     # martj42's own advance listings merged with ESPN's scoreboard (which lists games much
     # further out, incl. women's). We emit every such fixture (with its date) and let the
@@ -584,6 +922,10 @@ def main() -> int:
     (OUT / "upcoming.json").write_text(json.dumps(upcoming_json, ensure_ascii=False),
                                        encoding="utf-8")
 
+    # Syndication: the same upcoming first-ever meetings as a JSON Feed + RSS, so the
+    # project can notify rather than wait to be visited.
+    n_feed = write_feeds(members, upcoming_json, generated)
+
     # --- Report ---
     log("")
     log(f"  members:          {len(members)}")
@@ -595,17 +937,27 @@ def main() -> int:
     log(f"  ranking (women):  {rmeta['ranking_women']}")
     mm_kb = (OUT / "matches_men.json").stat().st_size / 1024
     mw_kb = (OUT / "matches_women.json").stat().st_size / 1024
+    ym_kb = (OUT / "years_men.json").stat().st_size / 1024
+    yw_kb = (OUT / "years_women.json").stat().st_size / 1024
     log(f"  match detail (lazy-loaded on click): "
         f"men {n_men} meetings / {mm_kb:.0f} KB, women {n_wom} / {mw_kb:.0f} KB")
+    log(f"  meeting years (lazy-loaded for the scrubber): "
+        f"men {y_men} / {ym_kb:.0f} KB, women {y_wom} / {yw_kb:.0f} KB")
+    log(f"  feed.json + feed.xml: {n_feed} upcoming first-ever meetings")
     id_to_name = {m["id"]: m["name"] for m in members}
     log(f"  upcoming FIFAGami (scheduled first meetings): "
         f"men {len(upcoming_json['men'])}, women {len(upcoming_json['women'])}")
     for lo, hi, d, t in upcoming_json["men"][:12]:
         log(f"      {d}  {id_to_name[lo]} – {id_to_name[hi]}  ({t})")
 
-    # Sanity asserts
-    assert len(members) >= 200, "expected ~210 current members"
-    assert men_max >= 100, "England-Scotland etc. should exceed 100 meetings"
+    # Validation. Anything that would publish a broken or misleading site raises here,
+    # before the caller (the daily refresh workflow) gets a chance to commit it.
+    if men_max < 100:
+        raise BuildError(f"most-played men's pair has only {men_max} meetings - "
+                         "Argentina-Uruguay et al should exceed 100; the source looks wrong")
+    for note in validate_artifacts():
+        log(f"  note: {note}")
+    log("  validation: artifacts OK")
     id_to_name = {m["id"]: m["name"] for m in members}
     top = max(men_json, key=lambda p: p[2])
     log(f"  most-played men's pair: {id_to_name[top[0]]} - {id_to_name[top[1]]} "
