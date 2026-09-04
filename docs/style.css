@@ -140,6 +140,8 @@ a { color: var(--accent); }
 .seg { display: flex; background: var(--paper); border: 1px solid var(--grid-strong); border-radius: var(--radius); overflow: hidden; }
 .seg button { flex: 1; padding: 8px; background: none; border: none; color: var(--ink-2); cursor: pointer; font-size: .9rem; font-family: inherit; }
 .seg button.active { background: var(--pos); color: var(--band-ink); font-weight: 600; }
+.seg button:disabled { opacity: .45; cursor: not-allowed; }
+.seg button:disabled.active { opacity: .6; }
 .ledger-light .seg button.active { color: #fff; }
 
 button.mini {
@@ -389,6 +391,10 @@ button.mini:hover { color: var(--ink); border-color: var(--ink); }
 .lv-when.past { color: var(--ink-3); }
 .lv-sub { color: var(--ink-3); font-size: .7rem; }
 .lv-empty { padding: 28px 24px; color: var(--ink-2); max-width: 60ch; }
+/* Says which archive and which filter a list is showing — the views print numbers, so they
+   have to be explicit about the data behind them. */
+.lv-scope { color: var(--ink); font-weight: 600; }
+#gender-note { margin: 6px 0 0; }
 .lv-more { padding: 14px 24px; color: var(--ink-3); font-size: .78rem; }
 .path-pick { display: flex; align-items: center; gap: 10px; margin-top: 14px; max-width: 520px; }
 .path-arrow { color: var(--ink-3); flex: none; }
