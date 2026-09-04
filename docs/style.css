@@ -1,6 +1,10 @@
-/* FIFAGami — themed on Ledger, dark (see docs/tokens.css, source:
-   github.com/dgoodenough/style). Greyscale carries structure; color carries meaning:
-   green = played (glowing ramp), red = never (when highlighted), yellow = upcoming. */
+/* FIFAGami — themed on Ledger (see docs/tokens.css, source: github.com/dgoodenough/style).
+   Greyscale carries structure; color carries meaning: green = played (glowing ramp),
+   red = never (when highlighted), yellow = upcoming.
+
+   The confederation palette and the meetings ramp are declared here as custom properties
+   because three things read them: this stylesheet, the canvas in app.js (via getCss), and
+   render_hero.py, which parses this file. One place, three consumers. */
 
 :root {
   /* app-level aliases onto the Ledger tokens (canvas reads these via getCss).
@@ -14,12 +18,73 @@
   --never-hi: #b3362c;      /* never-played when highlighted (red floods the void) */
   --upcoming: var(--pend-solid); /* scheduled first meeting */
   --diag: #0d0e10;          /* same-team diagonal (darker than the sheet) */
+  --crosshair: rgba(255, 255, 255, .08);
+  --band-strip-ink: #ffffff;     /* text on a confederation colour strip */
   /* Combined (men's + women's) view categories. Blue/orange are the most
      colourblind-distinguishable pair; green (the theme accent) marks "both". */
   --both: var(--pos);       /* pairing has met in BOTH the men's and women's game */
   --men-only: #5aa9e6;      /* met in the men's game only */
   --women-only: #eb9a3f;    /* met in the women's game only */
+
+  /* Two more kinds of empty. A blank cell used to mean three different things at once;
+     these separate "hadn't happened yet" and "this team has never played anyone" from
+     the plain never-met void. */
+  --predebut: #1b1d20;      /* scrubbed to a year before this team's first ever match */
+  --nodata: #201f24;        /* team has no matches at all in this archive */
+  --nodata-line: #8d7fa8;   /* label colour marking those rows/columns */
+
+  /* ---- confederation palette (categorical) -------------------------------
+     Deliberately clear of the three semantic hues: green = played, red = never,
+     yellow = upcoming. AFC used to be a red close enough to --neg to read as
+     "never", and CAF a green close enough to --pos to read as "played". */
+  --confed-afc: #c268b0;
+  --confed-caf: #3ba9bd;
+  --confed-concacaf: #c08a3c;
+  --confed-conmebol: #4f8fd0;
+  --confed-ofc: #8a6f5c;
+  --confed-uefa: #8b6ad6;
+
+  /* ---- meetings ramp -----------------------------------------------------
+     Single-hue green glow: more green = more played. Stops are at 0/30/55/80/100%
+     of the log-scaled count. */
+  --ramp-0: #263c30;
+  --ramp-30: #2b5a3d;
+  --ramp-55: #2e7d4f;
+  --ramp-80: #3aa967;
+  --ramp-100: #4fd688;
   font-size: 14px;
+}
+
+/* Light ("newsprint") theme. Ledger ships the greyscale swap in tokens.css; these are the
+   app-level values that also have to move — a ramp tuned for a dark sheet washes out on
+   paper, and white-on-colour flips to near-black.
+
+   app.js sets .ledger-light on <html> as well as <body>, because the canvas resolves this
+   palette against document.documentElement and properties set on <body> do not reach it. */
+.ledger-light {
+  --never: var(--paper);
+  --never-hi: #d8b3ad;
+  --diag: #b9b6ae;
+  --crosshair: rgba(0, 0, 0, .10);
+  --band-strip-ink: #ffffff;
+  --men-only: #2c6ea8;
+  --women-only: #a9631a;
+  --predebut: #dcd9d1;
+  --nodata: #d2ccd8;
+  --nodata-line: #6b4f8a;
+
+  --confed-afc: #a03f8c;
+  --confed-caf: #1c7d90;
+  --confed-concacaf: #94631d;
+  --confed-conmebol: #2c6ea8;
+  --confed-ofc: #6b5343;
+  --confed-uefa: #6543ad;
+
+  --ramp-0: #cfe0d4;
+  --ramp-30: #9ac7ab;
+  --ramp-55: #5da77f;
+  --ramp-80: #2f8054;
+  --ramp-100: #0f5c33;
 }
 
 * { box-sizing: border-box; }
@@ -32,7 +97,26 @@ body {
 }
 a { color: var(--accent); }
 
-#app { display: flex; height: 100vh; width: 100vw; }
+/* One consistent focus ring, everywhere, for keyboard users only. */
+:focus-visible {
+  outline: 2px solid var(--pos);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+.skip-link {
+  position: absolute; left: 8px; top: -60px; z-index: 20;
+  background: var(--pos); color: #06210f; font-weight: 700;
+  padding: 9px 14px; border-radius: var(--radius); text-decoration: none;
+  transition: top .12s;
+}
+.skip-link:focus { top: 8px; }
+
+#app { display: flex; height: 100vh; height: 100dvh; width: 100vw; }
 
 /* ---- panel ---- */
 #panel {
@@ -47,6 +131,7 @@ a { color: var(--accent); }
 #panel header .sub em { color: var(--neg); font-style: normal; font-weight: 700; }
 
 .ctl { margin-top: 18px; }
+.ctl[hidden], .legend[hidden] { display: none; }
 .row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
 .lbl { font-size: .72rem; text-transform: uppercase; letter-spacing: .8px; color: var(--ink-2); flex: 1; font-weight: 700; }
 .hint { color: var(--ink-3); font-size: .72rem; }
@@ -54,7 +139,8 @@ a { color: var(--accent); }
 /* segmented control */
 .seg { display: flex; background: var(--paper); border: 1px solid var(--grid-strong); border-radius: var(--radius); overflow: hidden; }
 .seg button { flex: 1; padding: 8px; background: none; border: none; color: var(--ink-2); cursor: pointer; font-size: .9rem; font-family: inherit; }
-.seg button.active { background: var(--pos); color: #fff; font-weight: 600; }
+.seg button.active { background: var(--pos); color: var(--band-ink); font-weight: 600; }
+.ledger-light .seg button.active { color: #fff; }
 
 button.mini {
   background: var(--paper); border: 1px solid var(--grid-strong); color: var(--ink-2);
@@ -80,39 +166,44 @@ button.mini:hover { color: var(--ink); border-color: var(--ink); }
 .team-list .rk { margin-left: auto; color: var(--ink-3); font-size: .68rem; font-variant-numeric: tabular-nums; }
 .team-list input { accent-color: var(--pos); }
 
-#sort {
+#sort, .path-pick select {
   width: 100%; padding: 7px 9px; background: var(--paper); border: 1px solid var(--grid-strong);
   color: var(--ink); border-radius: var(--radius); font-size: .85rem; cursor: pointer; font-family: inherit;
 }
 
-#year-scrub { width: 100%; accent-color: var(--pos); cursor: pointer; }
+/* timeline */
+.scrub-row { display: flex; align-items: center; gap: 9px; }
+#year-scrub { flex: 1; min-width: 0; accent-color: var(--pos); cursor: pointer; }
+.playbtn {
+  flex: none; width: 30px; height: 30px; border-radius: var(--radius); cursor: pointer;
+  background: var(--paper); border: 1px solid var(--grid-strong); color: var(--pos);
+  font-size: .72rem; line-height: 1; display: flex; align-items: center; justify-content: center;
+  font-family: inherit; letter-spacing: -1px;
+}
+.playbtn:hover { border-color: var(--pos); }
 
-/* upcoming first-meetings list */
-.upcoming-list {
-  max-height: 168px; overflow-y: auto; border: 1px solid var(--grid); border-radius: var(--radius);
-  background: var(--paper); padding: 4px 6px;
-}
-.up-row {
-  display: grid; grid-template-columns: 46px 1fr; gap: 9px; align-items: baseline; width: 100%;
-  background: none; border: none; color: var(--ink); text-align: left; cursor: pointer;
-  padding: 5px 6px; border-radius: var(--radius); font-size: .82rem; font-family: inherit;
-}
-.up-row:hover { background: var(--pend-fill); }
-.up-row .up-date {
-  color: var(--pend); font-weight: 700; font-size: .72rem; white-space: nowrap;
-  font-variant-numeric: tabular-nums;
-}
-.up-row .up-teams { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.up-row.pending { opacity: .55; }
-.up-row.pending .up-date { color: var(--ink-3); }
-
+/* legend */
 .legend { margin-top: 18px; }
 #legend-canvas { width: 100%; height: 14px; border: 1px solid var(--grid); display: block; }
-.legend-keys { display: flex; gap: 16px; margin-top: 8px; font-size: .74rem; color: var(--ink-2); }
+.legend-ticks {
+  position: relative; height: 14px; margin-top: 3px;
+  font-size: .62rem; color: var(--ink-3); font-variant-numeric: tabular-nums;
+}
+.legend-ticks .tick { position: absolute; transform: translateX(-50%); white-space: nowrap; }
+.legend-ticks .tick::before {
+  content: ""; position: absolute; left: 50%; top: -3px; width: 1px; height: 3px;
+  background: var(--grid-strong);
+}
+.legend-keys {
+  display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 8px;
+  font-size: .74rem; color: var(--ink-2);
+}
 .legend-keys .sw { display: inline-block; width: 11px; height: 11px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
 #sw-never { background: var(--never); border: 1px solid var(--grid-strong); }
 #sw-upcoming { background: var(--upcoming); }
 #sw-diag { background: var(--diag); }
+#sw-predebut { background: var(--predebut); border: 1px solid var(--grid); }
+#sw-nodata { background: var(--nodata); border: 1px solid var(--nodata-line); }
 .legend-combined-keys { flex-wrap: wrap; gap: 8px 16px; }
 #sw-both { background: var(--both); }
 #sw-men { background: var(--men-only); }
@@ -140,9 +231,51 @@ button.mini:hover { color: var(--ink); border-color: var(--ink); }
 #headline.allplayed .big { color: var(--pos-on-band); }
 #headline.combined .big { color: var(--pos-on-band); }  /* the "both" count */
 
-#canvas-wrap { position: relative; flex: 1; min-height: 0; overflow: hidden; }
+/* ---- stage bar: view tabs + toggles ---- */
+#stage-bar {
+  flex: none; display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 0 14px; background: var(--chrome-2);
+  border-bottom: 1px solid var(--grid-strong);
+}
+#views { display: flex; gap: 2px; overflow-x: auto; scrollbar-width: none; }
+#views::-webkit-scrollbar { display: none; }
+#views button {
+  background: none; border: none; border-bottom: 2px solid transparent;
+  color: var(--ink-2); font-family: inherit; font-size: .85rem; cursor: pointer;
+  padding: 11px 12px 9px; white-space: nowrap; display: flex; align-items: center; gap: 6px;
+}
+#views button:hover { color: var(--ink); }
+#views button.active { color: var(--ink); border-bottom-color: var(--pos); font-weight: 600; }
+#views .pip {
+  background: var(--pend-fill); color: var(--pend-fill-ink); border-radius: 8px;
+  padding: 1px 6px; font-size: .66rem; font-weight: 700; font-variant-numeric: tabular-nums;
+}
+#views .pip:empty { display: none; }
+
+#stage-tools { margin-left: auto; display: flex; align-items: center; gap: 6px; padding: 6px 0; }
+.tool {
+  background: var(--paper); border: 1px solid var(--grid-strong); color: var(--ink-2);
+  border-radius: var(--radius); padding: 5px 10px; font-size: .76rem; cursor: pointer;
+  font-family: inherit; display: flex; align-items: center; gap: 6px; white-space: nowrap;
+}
+.tool:hover:not(:disabled) { color: var(--ink); border-color: var(--ink-2); }
+.tool:disabled { opacity: .4; cursor: not-allowed; }
+.tool[hidden] { display: none; }
+.tool.on { color: var(--ink); border-color: var(--pos); background: var(--pos-fill); }
+.tool.icon { padding: 5px 9px; font-size: .95rem; line-height: 1; }
+.tool .tsw { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+.tool .tsw.never { background: var(--never-hi); }
+.tool .tsw.upcoming { background: var(--upcoming); }
+.tool .hint:empty { display: none; }
+
+/* ---- views ---- */
+.view { flex: 1; min-height: 0; }
+.view[hidden] { display: none; }
+#canvas-wrap { position: relative; height: 100%; overflow: hidden; }
 #grid { display: block; width: 100%; height: 100%; cursor: grab; touch-action: none; }
 #grid.panning { cursor: grabbing; }
+#grid:focus { outline: none; }
+#grid:focus-visible { outline: 2px solid var(--pos); outline-offset: -2px; }
 
 #zoom-ctl {
   position: absolute; right: 14px; bottom: 14px; z-index: 6; display: flex; gap: 4px;
@@ -161,16 +294,35 @@ button.mini:hover { color: var(--ink); border-color: var(--ink); }
   background: var(--paper); border: 1px solid var(--grid-strong); border-radius: var(--radius);
   padding: 8px 10px; font-size: .8rem; max-width: 240px; box-shadow: 0 2px 10px rgba(0,0,0,.18);
 }
-#tooltip .vs { font-weight: 700; margin-bottom: 3px; }
-#tooltip .n { color: var(--pos); font-weight: 700; }
-#tooltip .dim { color: var(--ink-2); font-size: .74rem; }
+#tooltip .vs, #peek .vs { font-weight: 700; margin-bottom: 3px; }
+#tooltip .n, #peek .n { color: var(--pos); font-weight: 700; }
+#tooltip .up, #peek .up { color: var(--pend); font-weight: 700; }
+#tooltip .silent, #peek .silent { color: var(--nodata-line); font-weight: 700; }
+#tooltip .pre, #peek .pre { color: var(--ink-2); font-weight: 700; }
+#tooltip .dim, #peek .dim { color: var(--ink-2); font-size: .74rem; }
+
+/* Peek: what a tap landed on, and a button to commit to it. Touch's substitute for hover,
+   and the reason a 2px cell is no longer a coin flip. */
+#peek[hidden] { display: none; }
+#peek {
+  position: absolute; z-index: 8; min-width: 190px; max-width: min(320px, calc(100% - 16px));
+  background: var(--paper); border: 1px solid var(--grid-strong); border-radius: var(--radius);
+  padding: 10px 12px 10px; font-size: .84rem; box-shadow: 0 4px 16px rgba(0,0,0,.3);
+}
+.peek-act { display: flex; gap: 8px; margin-top: 9px; }
+.peek-act button {
+  flex: 1; padding: 8px 10px; border-radius: var(--radius); font-family: inherit;
+  font-size: .78rem; cursor: pointer; border: 1px solid var(--grid-strong);
+  background: var(--paper-2); color: var(--ink);
+}
+.peek-act .peek-open { background: var(--pos); border-color: var(--pos); color: #06210f; font-weight: 700; }
 
 #loading {
   position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
   color: var(--ink-2); background: var(--chrome); font-size: .95rem;
 }
 
-/* single-team focus view (one team manually selected) */
+/* single-team focus (one team manually selected) */
 #canvas-wrap.focus #zoom-ctl { display: none; }
 #teamfocus[hidden] { display: none; }
 #teamfocus {
@@ -204,14 +356,53 @@ button.mini:hover { color: var(--ink); border-color: var(--ink); }
   margin: 14px 8px 4px; font-weight: 700;
 }
 
-/* match-detail card */
+/* ---- list views (fixtures / one-offs / near misses / connect) ---- */
+.listview { overflow-y: auto; padding: 0 0 40px; background: var(--chrome); }
+.lv-head { padding: 20px 24px 14px; max-width: 74ch; }
+.lv-head h2 { margin: 0 0 6px; font-size: 1.15rem; letter-spacing: -.2px; }
+.lv-head p { margin: 0; color: var(--ink-2); font-size: .88rem; line-height: 1.55; }
+.lv-group { padding: 0 12px; }
+.lv-group h3 {
+  margin: 18px 12px 6px; font-size: .72rem; text-transform: uppercase; letter-spacing: .8px;
+  color: var(--ink-2); display: flex; align-items: baseline; gap: 8px;
+}
+.lv-row {
+  display: flex; align-items: baseline; gap: 14px; width: 100%;
+  background: none; border: none; border-top: 1px solid var(--grid);
+  color: var(--ink); text-align: left; cursor: pointer; font-family: inherit;
+  padding: 11px 12px; font-size: .9rem;
+}
+.lv-row:hover { background: var(--paper); }
+.lv-row.pending { opacity: .5; }
+.lv-teams {
+  flex: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: baseline;
+  column-gap: 10px; row-gap: 2px;
+}
+.lv-t { min-width: 0; }
+.lv-v { color: var(--ink-3); font-size: .78rem; }
+.lv-right { flex: none; text-align: right; display: flex; flex-direction: column; gap: 2px; }
+.lv-when {
+  font-weight: 700; font-size: .82rem; font-variant-numeric: tabular-nums; color: var(--ink);
+}
+.lv-when.now { color: var(--pend); }
+.lv-when.soon { color: var(--pos); }
+.lv-when.past { color: var(--ink-3); }
+.lv-sub { color: var(--ink-3); font-size: .7rem; }
+.lv-empty { padding: 28px 24px; color: var(--ink-2); max-width: 60ch; }
+.lv-more { padding: 14px 24px; color: var(--ink-3); font-size: .78rem; }
+.path-pick { display: flex; align-items: center; gap: 10px; margin-top: 14px; max-width: 520px; }
+.path-arrow { color: var(--ink-3); flex: none; }
+.path-sum { margin: 16px 24px 0; color: var(--ink-2); font-size: .9rem; }
+.path-sum b { color: var(--pos); font-size: 1.1rem; font-variant-numeric: tabular-nums; }
+
+/* ---- match-detail card ---- */
 #detail[hidden] { display: none; }   /* id selector would otherwise beat [hidden] */
 #detail {
-  position: absolute; top: 14px; right: 14px; z-index: 8;
-  width: 330px; max-width: calc(100% - 28px); max-height: calc(100% - 28px);
+  position: fixed; top: 76px; right: 18px; z-index: 30;
+  width: 330px; max-width: calc(100vw - 36px); max-height: calc(100vh - 96px);
   display: flex; flex-direction: column;
   background: var(--paper); border: 1px solid var(--grid-strong); border-radius: var(--radius);
-  box-shadow: 0 4px 18px rgba(0,0,0,.22); overflow: hidden;
+  box-shadow: 0 4px 18px rgba(0,0,0,.32); overflow: hidden;
 }
 #detail .dh {
   display: flex; align-items: flex-start; gap: 8px; padding: 10px 14px;
@@ -228,7 +419,10 @@ button.mini:hover { color: var(--ink); border-color: var(--ink); }
 #detail .db.dim { color: var(--ink-2); }
 #detail .sum { font-size: .8rem; margin-bottom: 8px; color: var(--ink-2); }
 #detail .sum b { color: var(--ink); font-size: 1.05rem; font-variant-numeric: tabular-nums; }
-#detail .sum .w { color: var(--pos); font-weight: 700; } #detail .sum .l { color: var(--neg); font-weight: 700; }
+#detail .sum .w { color: var(--pos); font-weight: 700; }
+#detail .sum .d { color: var(--ink-2); font-weight: 700; }   /* draws had no rule at all */
+#detail .sum .l { color: var(--neg); font-weight: 700; }
+#detail .sum .gd { color: var(--ink); font-variant-numeric: tabular-nums; }
 #detail .never { color: var(--neg); font-weight: 700; padding: 6px 0; }
 #detail .mlist { display: flex; flex-direction: column; }
 #detail .mr {
@@ -242,6 +436,14 @@ button.mini:hover { color: var(--ink); border-color: var(--ink); }
 #detail .det-gender + .det-gender { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--grid-strong); }
 #detail .det-label { display: block; font-size: .72rem; text-transform: uppercase; letter-spacing: .6px; font-weight: 700; margin-bottom: 5px; }
 
+@media (prefers-reduced-motion: reduce) {
+  * { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+}
+
+/* ---- phones ---------------------------------------------------------------
+   The full 211-column grid is something you zoom into deliberately, not a landing
+   screen, so app.js defaults the view here to the fixtures feed. The grid tab still
+   works, and now actually fits: the label gutter shrinks with the cells. */
 @media (max-width: 720px) {
   body { overflow-y: auto; overflow-x: hidden; }
   #app { flex-direction: column; height: auto; min-height: 100vh; min-height: 100dvh; width: 100%; }
@@ -252,13 +454,33 @@ button.mini:hover { color: var(--ink); border-color: var(--ink); }
     border-right: none; border-top: 1px solid var(--grid-strong);
   }
   #panel header { display: none; }                /* title lives in the headline already */
-  #canvas-wrap { flex: none; height: 64vh; }
+  /* The grid is square and the phone is not, so a fixed-vh viewport leaves a band of
+     dead space under a fitted grid. Track the width instead: at fit the grid fills
+     the box, and zooming in still has room to pan. */
+  #canvas-wrap { height: min(70vh, 115vw); }
+  .view { flex: none; }
+  .listview { max-height: none; overflow: visible; }
   #headline { padding: 10px 16px; }
   #headline .big { font-size: 2rem; }
   #headline .rest { font-size: .82rem; }
+
+  #stage-bar { padding: 0 8px; gap: 4px; }
+  #views button { padding: 10px 10px 8px; font-size: .82rem; }
+  #stage-tools { margin-left: 0; width: 100%; padding: 0 4px 8px; overflow-x: auto; }
+  .tool { padding: 7px 11px; }
+
   #zoom-ctl button { width: 42px; height: 42px; font-size: 1.15rem; }
   #zoom-ctl button#zoom-fit { width: auto; padding: 0 14px; }
-  #detail { width: auto; left: 12px; right: 12px; max-height: 78%; }
+  /* Bottom sheet: a side card on a phone is a card with nowhere to go. */
+  #detail {
+    top: auto; bottom: 0; left: 0; right: 0; width: auto; max-width: none;
+    max-height: 76vh; border-radius: var(--radius) var(--radius) 0 0;
+    border-left: none; border-right: none; border-bottom: none;
+  }
+  #detail .dx { font-size: 1.9rem; padding: 0 8px; }
+  .lv-head { padding: 16px 16px 12px; }
+  .lv-row { padding: 13px 10px; }
+  .peek-act button { padding: 10px; }
   .ctl { margin-top: 22px; }
 
   /* Timeline scrubber moved up into the stage (under the headline, above the grid). */
@@ -267,4 +489,6 @@ button.mini:hover { color: var(--ink); border-color: var(--ink); }
   }
   #timeline-slot #timeline .row { margin-bottom: 6px; }
   #timeline-slot .timeline-help { display: none; }
+  /* The timeline belongs to the grid; it should not sit above a list view. */
+  body:not([data-view="grid"]) #timeline-slot #timeline { display: none; }
 }

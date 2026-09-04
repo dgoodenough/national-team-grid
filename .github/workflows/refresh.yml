@@ -28,12 +28,19 @@ jobs:
       - name: Rebuild data from source
         run: python build.py --refresh
 
+      # The rebuild is committed straight to the live site, so it has to clear the same
+      # bar as any other change. build.py already raises on a structurally broken artifact;
+      # this catches the subtler drift (a confederation losing members, the most-played
+      # fixture changing identity, the feeds falling out of sync with the data).
+      - name: Validate the rebuild before committing
+        run: python -m unittest discover -s tests -v
+
       - name: Commit if data changed
         id: commit
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add docs/data
+          git add docs/data docs/feed.json docs/feed.xml
           if git diff --cached --quiet; then
             echo "No data changes."
             echo "changed=false" >> "$GITHUB_OUTPUT"

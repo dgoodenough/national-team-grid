@@ -1,0 +1,43 @@
+name: CI
+
+# The site is a committed static build, so the artifacts in docs/data are the product.
+# These checks run on every push and PR, and refresh.yml runs the same suite before it is
+# allowed to commit a daily rebuild.
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Validate the committed data artifacts
+        run: python -m unittest discover -s tests -v
+
+      - name: Check the Python compiles
+        run: python -m compileall -q build.py render_hero.py tests
+
+      - name: Check the derived artifacts are in sync with their sources
+        run: |
+          # --derive rebuilds the derived artifacts from docs/data with no network. The
+          # feeds are excluded because they filter on today's date by design; years_*.json
+          # and the flag column are pure functions of the committed data, so a diff there
+          # means someone edited matches_*.json without re-deriving.
+          python build.py --derive
+          DETERMINISTIC="docs/data/years_men.json docs/data/years_women.json docs/data/members.json"
+          if ! git diff --quiet -- $DETERMINISTIC; then
+            echo "::error::Derived data is stale — run 'python build.py --derive' and commit"
+            git diff --stat -- $DETERMINISTIC
+            exit 1
+          fi

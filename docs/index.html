@@ -2,13 +2,40 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <title>National Team Matchup Grid</title>
-<meta name="description" content="A Scorigami-style grid of every international football matchup — which national teams have and haven't played each other." />
+<meta name="description" content="A Scorigami-style grid of every international football matchup — which national teams have and haven't played each other. 15,635 men's pairings have never happened." />
+<link rel="canonical" href="https://dgoodenough.github.io/national-team-grid/" />
+
+<!-- Share card. Absolute URLs: crawlers do not resolve relative ones. -->
+<meta property="og:type" content="website" />
+<meta property="og:site_name" content="National Team Matchup Grid" />
+<meta property="og:title" content="National Team Matchup Grid" />
+<meta property="og:description" content="Every FIFA nation is a row and a column. The picture is the negative space — the matchups that have never happened." />
+<meta property="og:url" content="https://dgoodenough.github.io/national-team-grid/" />
+<meta property="og:image" content="https://dgoodenough.github.io/national-team-grid/assets/og.png" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
+<meta property="og:image:alt" content="A 211x211 grid of international football matchups, mostly empty; the headline reads 15,635 international matchups have never been played." />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="National Team Matchup Grid" />
+<meta name="twitter:description" content="Every FIFA nation is a row and a column. The picture is the negative space — the matchups that have never happened." />
+<meta name="twitter:image" content="https://dgoodenough.github.io/national-team-grid/assets/og.png" />
+
+<link rel="icon" type="image/svg+xml" href="assets/favicon.svg" />
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
+<meta name="theme-color" content="#17191c" media="(prefers-color-scheme: dark)" />
+<meta name="theme-color" content="#c6c3bc" media="(prefers-color-scheme: light)" />
+
+<!-- Upcoming first-ever meetings, as a feed you can subscribe to. -->
+<link rel="alternate" type="application/rss+xml" title="FIFAGami — first-ever international meetings" href="feed.xml" />
+<link rel="alternate" type="application/feed+json" title="FIFAGami — first-ever international meetings" href="feed.json" />
+
 <link rel="stylesheet" href="tokens.css" />
 <link rel="stylesheet" href="style.css" />
 </head>
 <body class="ledger">
+<a class="skip-link" href="#stage">Skip to the grid</a>
 <div id="app">
   <aside id="panel">
     <header>
@@ -17,15 +44,16 @@
     </header>
 
     <section class="ctl">
+      <h2 class="sr-only">Dataset</h2>
       <div class="seg" id="gender" role="tablist" aria-label="Dataset">
-        <button data-gender="men" class="active">Men's</button>
-        <button data-gender="women">Women's</button>
-        <button data-gender="both">Both</button>
+        <button type="button" role="tab" id="tab-men" data-gender="men" class="active" aria-selected="true" tabindex="0">Men's</button>
+        <button type="button" role="tab" id="tab-women" data-gender="women" aria-selected="false" tabindex="-1">Women's</button>
+        <button type="button" role="tab" id="tab-both" data-gender="both" aria-selected="false" tabindex="-1">Both</button>
       </div>
     </section>
 
     <section class="ctl">
-      <div class="row"><span class="lbl">Sort</span></div>
+      <div class="row"><label class="lbl" for="sort">Sort</label></div>
       <select id="sort">
         <option value="confed">Confederation, then FIFA rank</option>
         <option value="rank">FIFA rank — global, down the line</option>
@@ -35,46 +63,48 @@
     </section>
 
     <section class="ctl">
-      <div class="row"><span class="lbl">Confederations</span>
-        <button class="mini" id="confed-all">all</button>
-        <button class="mini" id="confed-none">none</button>
+      <div class="row"><span class="lbl" id="confed-lbl">Confederations</span>
+        <button type="button" class="mini" id="confed-all">all</button>
+        <button type="button" class="mini" id="confed-none">none</button>
       </div>
-      <div id="confed-list" class="confed-list"></div>
+      <div id="confed-list" class="confed-list" role="group" aria-labelledby="confed-lbl"></div>
     </section>
 
     <section class="ctl">
-      <label class="check"><input type="checkbox" id="opt-highlight" /> Highlight never-played</label>
-      <label class="check"><input type="checkbox" id="opt-upcoming" /> Highlight upcoming first meetings <span class="hint" id="upcoming-count"></span></label>
       <label class="check"><input type="checkbox" id="opt-defunct" /> Include defunct teams <span class="hint">(advanced)</span></label>
-    </section>
-
-    <section class="ctl" id="upcoming-section" hidden>
-      <div class="row"><span class="lbl">Upcoming first meetings</span><span class="hint" id="upcoming-list-count"></span></div>
-      <div id="upcoming-list" class="upcoming-list"></div>
     </section>
 
     <section class="ctl" id="timeline">
       <div class="row"><span class="lbl">Timeline</span><span id="year-label" class="hint"></span></div>
-      <input type="range" id="year-scrub" min="1872" max="2026" step="1" value="2026" autocomplete="off" />
+      <div class="scrub-row">
+        <button type="button" id="year-play" class="playbtn" aria-label="Play the timeline from 1872" title="Play the timeline">&#9654;</button>
+        <input type="range" id="year-scrub" min="1872" max="2026" step="1" value="2026"
+               autocomplete="off" aria-label="Show the grid as of year" />
+      </div>
       <p class="hint timeline-help">Scrub to watch the grid fill in — empty cells are matchups that hadn't happened yet.</p>
     </section>
 
     <section class="ctl">
-      <div class="row"><span class="lbl">Manual selection</span>
-        <button class="mini" id="manual-clear">clear</button>
+      <div class="row"><label class="lbl" for="team-search">Teams</label>
+        <button type="button" class="mini" id="manual-clear">clear</button>
       </div>
       <input type="search" id="team-search" placeholder="Filter teams…" autocomplete="off" />
-      <div id="team-list" class="team-list"></div>
-      <p class="hint">Tick teams to build a custom sub-grid (overrides confederation filter).</p>
+      <div id="team-list" class="team-list" role="group" aria-label="Teams"></div>
+      <p class="hint">Tick <b>one</b> team for its full record, or several to build a sub-grid.</p>
     </section>
 
-    <section class="legend">
+    <section class="legend" id="legend">
+      <h2 class="sr-only">Legend</h2>
       <div id="legend-ramp">
         <div class="row"><span class="lbl">Meetings</span><span id="legend-max" class="hint"></span></div>
-        <canvas id="legend-canvas" width="220" height="14"></canvas>
+        <canvas id="legend-canvas" width="220" height="14" role="img"
+                aria-label="Colour ramp: darker green is fewer meetings, brighter green is more"></canvas>
+        <div id="legend-ticks" class="legend-ticks" aria-hidden="true"></div>
         <div class="legend-keys">
           <span><i class="sw" id="sw-never"></i> never played</span>
           <span><i class="sw" id="sw-upcoming"></i> upcoming</span>
+          <span><i class="sw" id="sw-predebut"></i> not yet debuted</span>
+          <span><i class="sw" id="sw-nodata"></i> never played anyone</span>
           <span><i class="sw" id="sw-diag"></i> same team</span>
         </div>
       </div>
@@ -96,26 +126,77 @@
          upcoming fixtures: <a href="https://www.espn.com/soccer/" target="_blank" rel="noopener">ESPN</a> ·
          confederations: <a href="https://github.com/cnc8/fifa-world-ranking" target="_blank" rel="noopener">cnc8</a>.
          Inspired by <a href="https://nflscorigami.com" target="_blank" rel="noopener">Scorigami</a>.</p>
+      <p>Subscribe to first-ever meetings: <a href="feed.xml">RSS</a> · <a href="feed.json">JSON</a>.
+         <a href="https://github.com/dgoodenough/national-team-grid" target="_blank" rel="noopener">Source</a>.</p>
     </footer>
   </aside>
 
   <main id="stage">
     <div id="headline"></div>
-    <div id="timeline-slot"></div>
-    <div id="canvas-wrap">
-      <canvas id="grid"></canvas>
-      <div id="zoom-ctl">
-        <button id="zoom-out" title="Zoom out">&minus;</button>
-        <button id="zoom-fit" title="Fit grid to view">Fit</button>
-        <button id="zoom-in" title="Zoom in">+</button>
+
+    <div id="stage-bar">
+      <nav id="views" role="tablist" aria-label="View">
+        <button type="button" role="tab" data-view="grid" class="active" aria-selected="true" tabindex="0">Grid</button>
+        <button type="button" role="tab" data-view="fixtures" aria-selected="false" tabindex="-1">Fixtures <span class="pip" id="views-fixtures-pip"></span></button>
+        <button type="button" role="tab" data-view="oneoffs" aria-selected="false" tabindex="-1">One-offs</button>
+        <button type="button" role="tab" data-view="misses" aria-selected="false" tabindex="-1">Near misses</button>
+        <button type="button" role="tab" data-view="path" aria-selected="false" tabindex="-1">Connect</button>
+      </nav>
+      <div id="stage-tools">
+        <button type="button" id="opt-highlight" class="tool" aria-pressed="false"
+                title="Invert the grid so the never-played cells glow">
+          <i class="tsw never"></i> Never-played</button>
+        <button type="button" id="opt-upcoming" class="tool" aria-pressed="false"
+                title="Highlight pairs that have never met but have a fixture scheduled">
+          <i class="tsw upcoming"></i> Upcoming <span class="hint" id="upcoming-count"></span></button>
+        <button type="button" id="share" class="tool" title="Copy a link to exactly this view">Copy link</button>
+        <button type="button" id="theme" class="tool icon" aria-label="Switch to the light theme" title="Switch theme">&#9788;</button>
       </div>
-      <div id="teamfocus" hidden></div>
-      <div id="tooltip" hidden></div>
-      <div id="detail" hidden></div>
-      <div id="loading">Loading match history…</div>
     </div>
+
+    <div id="timeline-slot"></div>
+
+    <section id="view-grid" class="view" aria-label="Matchup grid">
+      <div id="canvas-wrap">
+        <canvas id="grid" tabindex="0" role="application"
+                aria-roledescription="matchup grid"
+                aria-label="Grid of international matchups. Use the arrow keys to move between cells, Enter to open a head-to-head, Escape to close."
+                aria-describedby="grid-help"></canvas>
+        <p id="grid-help" class="sr-only">
+          Each cell is a pair of national teams, coloured by how many times they have played.
+          Arrow keys move one cell; Home and End jump to the start and end of a row;
+          plus and minus zoom; f fits the grid to the view.
+        </p>
+        <div id="zoom-ctl">
+          <button type="button" id="zoom-out" aria-label="Zoom out" title="Zoom out">&minus;</button>
+          <button type="button" id="zoom-fit" title="Fit grid to view">Fit</button>
+          <button type="button" id="zoom-in" aria-label="Zoom in" title="Zoom in">+</button>
+        </div>
+        <div id="teamfocus" hidden></div>
+        <div id="tooltip" hidden aria-hidden="true"></div>
+        <div id="peek" hidden></div>
+        <div id="loading">Loading match history…</div>
+      </div>
+    </section>
+
+    <section id="view-fixtures" class="view listview" aria-label="Upcoming first-ever meetings" hidden></section>
+    <section id="view-oneoffs" class="view listview" aria-label="Fixtures played exactly once" hidden></section>
+    <section id="view-misses" class="view listview" aria-label="Pairs closest to meeting" hidden></section>
+    <section id="view-path" class="view listview" aria-label="Degrees of separation" hidden></section>
   </main>
 </div>
+
+<!-- Opened from any view, so it sits outside the grid and positions itself against the
+     viewport rather than the canvas. -->
+<div id="detail" hidden role="dialog" aria-modal="false" aria-label="Head-to-head record"></div>
+
+<div id="live" class="sr-only" role="status" aria-live="polite"></div>
+<noscript>
+  <p style="padding:16px">This grid is drawn in the browser, so it needs JavaScript. The
+  underlying data is plain JSON in
+  <a href="https://github.com/dgoodenough/national-team-grid/tree/main/docs/data">docs/data</a>,
+  and upcoming first-ever meetings are in <a href="feed.xml">feed.xml</a>.</p>
+</noscript>
 <script>
   // Load the app with a per-day cache-buster so the daily auto-refresh (and any code change)
   // reaches returning visitors within a day, despite GitHub Pages' 10-minute asset cache.

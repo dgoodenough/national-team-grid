@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img"
+     aria-label="National Team Matchup Grid">
+  <title>National Team Matchup Grid</title>
+  <!-- The project in 16 pixels: a symmetric matrix with a dark diagonal, mostly empty.
+       Green = played, near-black = the void of matchups that have never happened. -->
+  <rect width="32" height="32" rx="5" fill="#17191c"/>
+  <g shape-rendering="crispEdges">
+    <!-- row 0 -->
+    <rect x="3"  y="3"  width="6" height="6" fill="#0d0e10"/>
+    <rect x="10" y="3"  width="6" height="6" fill="#4fd688"/>
+    <rect x="17" y="3"  width="6" height="6" fill="#24272b"/>
+    <rect x="24" y="3"  width="6" height="6" fill="#3aa967"/>
+    <!-- row 1 -->
+    <rect x="3"  y="10" width="6" height="6" fill="#4fd688"/>
+    <rect x="10" y="10" width="6" height="6" fill="#0d0e10"/>
+    <rect x="17" y="10" width="6" height="6" fill="#2b5a3d"/>
+    <rect x="24" y="10" width="6" height="6" fill="#24272b"/>
+    <!-- row 2 -->
+    <rect x="3"  y="17" width="6" height="6" fill="#24272b"/>
+    <rect x="10" y="17" width="6" height="6" fill="#2b5a3d"/>
+    <rect x="17" y="17" width="6" height="6" fill="#0d0e10"/>
+    <rect x="24" y="17" width="6" height="6" fill="#4fd688"/>
+    <!-- row 3 -->
+    <rect x="3"  y="24" width="6" height="6" fill="#3aa967"/>
+    <rect x="10" y="24" width="6" height="6" fill="#24272b"/>
+    <rect x="17" y="24" width="6" height="6" fill="#4fd688"/>
+    <rect x="24" y="24" width="6" height="6" fill="#0d0e10"/>
+  </g>
+</svg>
