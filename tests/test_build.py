@@ -228,6 +228,19 @@ class TestSiteAssets(unittest.TestCase):
             self.assertTrue(name in html, f"index.html should reference {name}")
             self.assertTrue((docs / name).exists(), f"docs/{name} is missing")
 
+    def test_the_share_card_is_regenerated_by_the_daily_refresh(self):
+        """The card quotes a live figure ("15,635 ... have never been played").
+
+        It is generated from the data, so if the refresh workflow stops regenerating or
+        stops committing it, a pasted link starts quoting a number that moved several
+        international windows ago — silently, because nothing else would notice."""
+        wf = (ROOT / ".github/workflows/refresh.yml").read_text(encoding="utf-8")
+        self.assertTrue("render_hero.py" in wf,
+                        "refresh.yml must regenerate the images after rebuilding the data")
+        commit_step = wf.split("git add", 1)[1].split("\n", 1)[0]
+        self.assertTrue("docs/assets" in commit_step,
+                        f"refresh.yml must commit the regenerated images; git add is:{commit_step}")
+
     def test_every_data_file_the_app_fetches_exists(self):
         app = (ROOT / "docs" / "app.js").read_text(encoding="utf-8")
         for name in ("members", "matrix_men", "matrix_women", "defunct", "upcoming"):

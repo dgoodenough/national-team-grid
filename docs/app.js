@@ -369,6 +369,31 @@ function activePool() {
   return base;
 }
 
+/* The teams the panel's filters currently admit.
+
+   This is the rule the grid has always used to build S.order. The list views were reading
+   activePool() directly, so a confederation filter that was plainly ticked in the panel
+   reached exactly one of the five views — filter to OFC and "Near misses" still opened on
+   Russia v Bosnia. One definition, consulted by everything. */
+function scopeMembers() {
+  const base = activePool();
+  return S.manual.size
+    ? base.filter(m => S.manual.has(m.id))
+    : base.filter(m => S.showConfeds.has(m.confed));
+}
+// True when the panel is narrowing what a view may show (drives the "filtered" notes).
+const isFiltered = () =>
+  S.manual.size > 0 || S.showConfeds.size < S.confedOrder.length;
+// Everything a derived view depends on. Cache keys and re-render triggers hang off this.
+function scopeKey() {
+  return [S.gender, S.includeDefunct ? "d" : "", present() ? "now" : S.year,
+          [...S.showConfeds].sort().join("|"), [...S.manual].sort().join("|")].join("~");
+}
+// Two separate clauses, because some sentences already name the year and doubling up reads
+// as a bug ("had played exactly once by 1950 (as of 1950)"). Callers compose what they need.
+const scopeNote = () => (isFiltered() ? " (in the current filter)" : "");
+const asOfNote = () => (present() ? "" : ` as of ${S.year}`);
+
 function recompute(fit) {
   closeDetail();
   closePeek();
@@ -385,9 +410,7 @@ function recompute(fit) {
   canvasWrap.classList.remove("focus");
 
   const base = activePool();
-  const active = S.manual.size
-    ? base.filter(m => S.manual.has(m.id))
-    : base.filter(m => S.showConfeds.has(m.confed));
+  const active = scopeMembers();
 
   // For the "total matches" sort, tally each active team's meetings against the whole pool
   // (everyone, not just the visible subset), honouring the time scrubber.
@@ -429,7 +452,24 @@ function recompute(fit) {
   updateStats();
   updateLegend();
   draw();
+  refreshListView();
   writeUrl();
+}
+
+/* Re-render whichever list view is open.
+
+   The panel's filters used to reach only the grid, because recompute() ended at draw().
+   Anything that changes what a view may show — a confederation ticked, a team picked, the
+   defunct layer, the dataset, the scrubbed year — has to land here too. */
+function refreshListView() {
+  switch (S.view) {
+    case "fixtures": renderFixtures(); break;
+    case "oneoffs": renderOneOffs(); break;
+    case "misses": renderMisses(); break;
+    case "path": renderPath(); break;
+    default: return;
+  }
+  updateHeadline();
 }
 
 /* Prefix sums of "how many of the on-screen pairs had met by year Y".
@@ -834,6 +874,19 @@ function pairSummary(aId, bId) {
   return { title, lines: [`never played${asOf}`, `${genderWord()} internationals`] };
 }
 const genderWord = () => (isCombined() ? "senior" : S.gender === "men" ? "men's" : "women's");
+
+/* Which archive(s) a view is actually reading.
+
+   genderWord() answers "a ___ international" and says "senior" for combined, which reads
+   fine in a tooltip. The list views need the other thing — a name for the body of data
+   behind the number they print — and getting that wrong is how they ended up labelling a
+   men's-only figure "senior". */
+function archiveLabel() {
+  return isCombined() ? "men's and women's combined"
+    : S.gender === "men" ? "men's" : "women's";
+}
+// The archives a view should read: combined means both, not "men's with a fallback".
+const activeArchives = () => (isCombined() ? ["men", "women"] : [dataGender(S.gender)]);
 
 function summaryHtml(sum) {
   const cls = sum.upcoming ? "up" : sum.silent ? "silent" : sum.predebut ? "pre" : "n";
@@ -1264,26 +1317,42 @@ function renderTeamFocus(teamId) {
 /* 211 nodes and ~6,500 edges, so the whole graph fits in a handful of bitset words per
    team. Common-opponent counts for all 15,635 never-played pairs come out in a few ms. */
 let _graphCache = null;
-function graph(gender = dataGender(S.gender)) {
-  if (_graphCache && _graphCache.gender === gender && _graphCache.defunct === S.includeDefunct) {
-    return _graphCache;
-  }
-  const teams = activePool();
-  const ids = teams.map(m => m.id);
+function graph() {
+  const key = scopeKey();
+  if (_graphCache && _graphCache.key === key) return _graphCache;
+
+  // Only the teams the filters admit, only the archives the toggle selects, and only the
+  // meetings that had happened by the scrubbed year — so "never played" and "opponents in
+  // common" mean the same thing here as they do on the grid.
+  const ids = scopeMembers().map(m => m.id);
   const pos = new Map(ids.map((id, i) => [id, i]));
   const n = ids.length, W = Math.ceil(n / 32);
   const bits = new Uint32Array(n * W);
   const adj = ids.map(() => []);
-  for (const key of S.pairs[gender].keys()) {
-    const comma = key.indexOf(",");
-    const a = pos.get(+key.slice(0, comma)), b = pos.get(+key.slice(comma + 1));
-    if (a === undefined || b === undefined) continue;
-    bits[a * W + (b >> 5)] |= (1 << (b & 31));
-    bits[b * W + (a >> 5)] |= (1 << (a & 31));
-    adj[a].push(b); adj[b].push(a);
+  const has = (a, b) => (bits[a * W + (b >> 5)] >>> (b & 31)) & 1;
+  for (const g of activeArchives()) {
+    for (const k of S.pairs[g].keys()) {
+      const comma = k.indexOf(",");
+      const idA = +k.slice(0, comma), idB = +k.slice(comma + 1);
+      const a = pos.get(idA), b = pos.get(idB);
+      if (a === undefined || b === undefined) continue;
+      if (!metAsOf(idA, idB, g)) continue;
+      if (has(a, b)) continue;                  // combined view: the two archives overlap
+      bits[a * W + (b >> 5)] |= (1 << (b & 31));
+      bits[b * W + (a >> 5)] |= (1 << (a & 31));
+      adj[a].push(b); adj[b].push(a);
+    }
   }
-  _graphCache = { gender, defunct: S.includeDefunct, ids, pos, n, W, bits, adj };
+  _graphCache = { key, ids, pos, n, W, bits, adj };
   return _graphCache;
+}
+// Have these two met in ANY archive the current toggle covers, as of the scrubbed year?
+function metInView(a, b) {
+  return activeArchives().some(g => metAsOf(a, b, g));
+}
+// Total meetings across the archives the toggle covers, as of the scrubbed year.
+function countInView(a, b) {
+  return activeArchives().reduce((t, g) => t + countAsOf(a, b, g), 0);
 }
 function popcount(v) {
   v = v - ((v >> 1) & 0x55555555);
@@ -1364,31 +1433,34 @@ function renderFixtures() {
   const cut = new Date(S.today + "T00:00:00"); cut.setDate(cut.getDate() - 14);
   const cutoff = cut.toISOString().slice(0, 10);
   const groups = [];
+  const inScope = new Set(scopeMembers().map(m => m.id));
   for (const g of ["men", "women"]) {
     const items = [];
     for (const [key, [date, tourn]] of S.upcoming[g]) {
       if (date < cutoff) continue;                 // drop stale / abandoned fixtures
       const [lo, hi] = key.split(",").map(Number);
       if (!S.byId.has(lo) || !S.byId.has(hi)) continue;
+      if (!inScope.has(lo) || !inScope.has(hi)) continue;   // obey the panel's filter
       items.push({ lo, hi, date, tourn, future: date >= S.today });
     }
     items.sort((a, b) => a.date.localeCompare(b.date));
     if (items.length) groups.push({ g, items });
   }
 
-  const total = groups.reduce((n, gr) => n + gr.items.filter(i => i.future).length, 0);
-  if (!total && !groups.length) {
+  if (!groups.length) {
     host.innerHTML = `<div class="lv-empty"><p>No first-ever meetings are on the calendar
-      right now.</p><p class="hint">Fixtures come from martj42's advance listings and ESPN's
-      scoreboard, up to two years out.</p></div>`;
+      ${isFiltered() ? "for the teams in the current filter" : "right now"}.</p>
+      <p class="hint">Fixtures come from martj42's advance listings and ESPN's scoreboard,
+      up to two years out.</p></div>`;
     return;
   }
 
   host.innerHTML =
     `<div class="lv-head">
        <h2>Never met. Scheduled to.</h2>
-       <p>Every pairing below would be a first meeting in ${esc(S.meta.dataThrough.men ? "the history of the game" : "the record")} —
-          two national teams that have never played each other, with a date.
+       <p>Every pairing below would be a first meeting in the history of the game — two
+          national teams that have never played each other, with a date. This feed covers
+          <b>both</b> games, whichever dataset the grid is set to${esc(isFiltered() ? ", filtered to the teams in the panel" : "")}.
           <a href="feed.xml">Subscribe by RSS</a> or <a href="feed.json">JSON</a>.</p>
      </div>`
     + groups.map(gr =>
@@ -1406,31 +1478,60 @@ function renderFixtures() {
 }
 
 /* One-offs — pairs that met exactly once and never again. */
-function renderOneOffs() {
-  const host = $("view-oneoffs");
-  const g = dataGender(S.gender);
+function oneOffPairs() {
+  // Candidate keys across every archive the toggle covers, so "met exactly once" in the
+  // combined view means once in total rather than once in the men's game.
+  const seen = new Set();
   const rows = [];
-  for (const [key, [count, fy]] of S.pairs[g]) {
-    if (count !== 1) continue;
-    const [lo, hi] = key.split(",").map(Number);
-    if (!S.byId.has(lo) || !S.byId.has(hi)) continue;
-    rows.push({ lo, hi, year: fy });
+  const inScope = new Set(scopeMembers().map(m => m.id));
+  for (const g of activeArchives()) {
+    for (const [key, val] of S.pairs[g]) {
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const [lo, hi] = key.split(",").map(Number);
+      if (!inScope.has(lo) || !inScope.has(hi)) continue;
+      if (countInView(lo, hi) !== 1) continue;
+      // The single meeting's year: whichever archive holds it.
+      let year = val[1];
+      if (isCombined()) {
+        for (const g2 of activeArchives()) {
+          if (countAsOf(lo, hi, g2) === 1) { const p2 = S.pairs[g2].get(key); year = p2 && p2[1]; }
+        }
+      }
+      rows.push({ lo, hi, year });
+    }
   }
   rows.sort((a, b) => (a.year ?? 9999) - (b.year ?? 9999));
+  return rows;
+}
+
+function renderOneOffs() {
+  const host = $("view-oneoffs");
+  // Counting meetings "by year Y" needs the per-pair years; the grid gets by on first-meeting
+  // years alone, this view cannot. Fetch once, then re-render.
+  if (!present() && !countsExact()) {
+    host.innerHTML = `<div class="lv-head"><h2>Played once. Never again.</h2>
+      <p>Counting meetings as of ${S.year}…</p></div>`;
+    ensureYearsForView().then(() => { if (S.view === "oneoffs") { renderOneOffs(); updateHeadline(); } });
+    return;
+  }
+  const rows = oneOffPairs();
   const shown = rows.slice(0, 300);
 
   host.innerHTML =
     `<div class="lv-head">
        <h2>Played once. Never again.</h2>
-       <p><b>${num(rows.length)}</b> ${esc(genderWord())} ${pl(rows.length, "pairing")} have met
-          exactly once in the whole history of the fixture list — oldest first, so the top of
-          this list is the longest either side has gone without a rematch.</p>
+       <p><b>${num(rows.length)}</b> ${esc(archiveLabel())} ${pl(rows.length, "pairing")} had met
+          exactly once${present() ? " in the whole history of the fixture list" : ` by ${S.year}`}${esc(scopeNote())}
+          — oldest first, so the top of this list is the longest either side has gone without
+          a rematch.</p>
      </div>`
-    + `<div class="lv-group">`
-    + shown.map(r => pairRowHtml(r.lo, r.hi,
-        `<span class="lv-when">${r.year ?? "?"}</span>`
-        + `<span class="lv-sub">${esc(yearsAgo(r.year))}</span>`)).join("")
-    + `</div>`
+    + (rows.length ? `<div class="lv-group">`
+      + shown.map(r => pairRowHtml(r.lo, r.hi,
+          `<span class="lv-when">${r.year ?? "?"}</span>`
+          + `<span class="lv-sub">${esc(yearsAgo(r.year))}</span>`)).join("")
+      + `</div>`
+      : `<div class="lv-empty"><p>No pairing in the current filter has met exactly once.</p></div>`)
     + (rows.length > shown.length
       ? `<p class="lv-more">Showing the ${shown.length} oldest of ${num(rows.length)}.</p>` : "");
   wireRows(host);
@@ -1447,12 +1548,11 @@ function yearsAgo(year) {
 function renderMisses() {
   const host = $("view-misses");
   const g = graph();
-  const gender = dataGender(S.gender);
   const out = [];
   for (let a = 0; a < g.n; a++) {
     for (let b = a + 1; b < g.n; b++) {
       const aId = g.ids[a], bId = g.ids[b];
-      if (S.pairs[gender].has(pairKey(aId, bId))) continue;   // they have met
+      if (metInView(aId, bId)) continue;                      // they have met
       const shared = commonOpponents(g, a, b);
       if (shared < 8) continue;
       const A = S.byId.get(aId), B = S.byId.get(bId);
@@ -1471,22 +1571,26 @@ function renderMisses() {
   host.innerHTML =
     `<div class="lv-head">
        <h2>Closest to happening.</h2>
-       <p>Pairs that have <b>never</b> played each other, ranked by how many opponents they
-          <i>have</i> in common. Nothing here is scheduled — this is the list of fixtures that
-          keep not happening. ${esc(genderWord())} archive.</p>
-     </div><div class="lv-group">`
-    + shown.map(r => pairRowHtml(r.aId, r.bId,
-        `<span class="lv-when">${r.shared}</span>`
-        + `<span class="lv-sub">shared opponents${r.same
-          ? ` · both ${esc(S.byId.get(r.aId).confed)}` : ""}</span>`)).join("")
-    + `</div>`;
+       <p>Pairs that had <b>never</b> played each other${present() ? "" : ` by ${S.year}`},
+          ranked by how many opponents they <i>have</i> in common. Nothing here is scheduled —
+          this is the list of fixtures that keep not happening.
+          <span class="lv-scope">${esc(archiveLabel())} archive${esc(scopeNote())}</span>.</p>
+     </div>`
+    + (shown.length ? `<div class="lv-group">`
+      + shown.map(r => pairRowHtml(r.aId, r.bId,
+          `<span class="lv-when">${r.shared}</span>`
+          + `<span class="lv-sub">shared opponents${r.same
+            ? ` · both ${esc(S.byId.get(r.aId).confed)}` : ""}</span>`)).join("")
+      + `</div>`
+      : `<div class="lv-empty"><p>No pair in the current filter has eight or more opponents
+         in common without having met. Widen the confederation filter, or scrub forward.</p></div>`);
   wireRows(host);
 }
 
 /* Connect — the shortest chain of real matches between any two teams. */
 function renderPath() {
   const host = $("view-path");
-  const pool = activePool().slice().sort((a, b) => a.name.localeCompare(b.name));
+  const pool = scopeMembers().slice().sort((a, b) => a.name.localeCompare(b.name));
   const g = graph();
   if (S.path.a == null || !g.pos.has(S.path.a)) {
     S.path.a = (pool.find(m => m.name === "Tonga") || pool[0]).id;
@@ -1499,18 +1603,29 @@ function renderPath() {
 
   const path = shortestPath(g, S.path.a, S.path.b);
   let body;
-  if (!path) {
+  if (!pool.length) {
+    body = `<div class="lv-empty"><p>No teams are in the current filter. Widen the
+      confederation filter in the panel to pick two.</p></div>`;
+  } else if (!path) {
+    const undebuted = [S.path.a, S.path.b]
+      .map(id => S.byId.get(id))
+      .filter(m => m && (!hasAnyMatches(m.id) || notYetDebuted(m.id)));
+    const why = undebuted.length
+      ? `${esc(undebuted.map(m => m.name).join(" and "))} had not played anyone
+         ${present() ? "in this archive" : `by ${S.year}`}.`
+      : `The confederation filter may have removed the teams that link them.`;
     body = `<div class="lv-empty"><p>No chain of matches connects these two in the
-      ${esc(genderWord())} archive — at least one of them has never played anyone.</p></div>`;
+      ${esc(archiveLabel())} archive${esc(asOfNote())}${esc(scopeNote())}. ${why}</p></div>`;
   } else if (path.length === 1) {
     body = `<div class="lv-empty"><p>Pick two different teams.</p></div>`;
   } else {
     const hops = [];
     for (let i = 0; i < path.length - 1; i++) {
       const p = lookup(path[i], path[i + 1]);
+      const n = countInView(path[i], path[i + 1]);
       hops.push(pairRowHtml(path[i], path[i + 1],
-        `<span class="lv-when">${p ? p[0] : 0}</span>`
-        + `<span class="lv-sub">${pl(p ? p[0] : 0, "meeting")}${p && p[2] ? ` · last ${p[2]}` : ""}</span>`));
+        `<span class="lv-when">${n}</span>`
+        + `<span class="lv-sub">${pl(n, "meeting")}${p && p[2] && present() ? ` · last ${p[2]}` : ""}</span>`));
     }
     const degrees = path.length - 1;
     body = `<p class="path-sum"><b>${degrees}</b> ${pl(degrees, "degree")} of separation.</p>`
@@ -1521,7 +1636,8 @@ function renderPath() {
     `<div class="lv-head">
        <h2>How far apart are any two teams?</h2>
        <p>The shortest chain of matches that have actually been played, from one national
-          team to another.</p>
+          team to another. <span class="lv-scope">${esc(archiveLabel())} archive`
+    + `${esc(asOfNote())}${esc(scopeNote())}</span>.</p>
        <div class="path-pick">
          <label class="sr-only" for="path-a">From</label>
          <select id="path-a">${opts(S.path.a)}</select>
@@ -1597,36 +1713,42 @@ function headlineCombined(headline) {
 }
 
 function headlineFixtures(headline) {
+  const inScope = new Set(scopeMembers().map(m => m.id));
   let soonest = null, n = 0;
   for (const g of ["men", "women"]) {
-    for (const [, [date]] of S.upcoming[g]) {
+    for (const [key, [date]] of S.upcoming[g]) {
       if (date < S.today) continue;
+      const [lo, hi] = key.split(",").map(Number);
+      if (!inScope.has(lo) || !inScope.has(hi)) continue;   // as filtered as the list below
       n++;
       if (!soonest || date < soonest) soonest = date;
     }
   }
   if (!n) {
     headline.innerHTML = `<span class="big">0</span>`
-      + `<span class="rest">first-ever meetings are on the calendar right now.</span>`;
+      + `<span class="rest">first-ever meetings are on the calendar`
+      + `${esc(isFiltered() ? " for the teams in the current filter" : " right now")}.</span>`;
     return;
   }
   const cd = countdown(soonest);
   headline.innerHTML = `<span class="big">${n}</span>`
     + `<span class="rest">${pl(n, "pairing")} that ${n === 1 ? "has" : "have"} <b>never</b> met `
-    + `${n === 1 ? "is" : "are"} scheduled to — the next one <b>${esc(cd.text)}</b>.</span>`;
+    + `${n === 1 ? "is" : "are"} scheduled to${esc(scopeNote())} — the next one `
+    + `<b>${esc(cd.text)}</b>.</span>`;
 }
 
 function headlineOneOffs(headline) {
-  const g = dataGender(S.gender);
-  let n = 0, oldest = null;
-  for (const [, [count, fy]] of S.pairs[g]) {
-    if (count !== 1) continue;
-    n++;
-    if (fy != null && (oldest == null || fy < oldest)) oldest = fy;
+  if (!present() && !countsExact()) {                 // years file still on its way
+    headline.innerHTML = `<span class="big">…</span>`
+      + `<span class="rest">counting meetings as of ${S.year}.</span>`;
+    return;
   }
-  headline.innerHTML = `<span class="big">${num(n)}</span>`
-    + `<span class="rest"><b>${esc(genderWord())}</b> ${pl(n, "pairing")} have played `
-    + `<b>exactly once</b>${oldest ? ` — the oldest still-unrepeated fixture was in <b>${oldest}</b>` : ""}.</span>`;
+  const rows = oneOffPairs();
+  const oldest = rows.length ? rows[0].year : null;
+  headline.innerHTML = `<span class="big">${num(rows.length)}</span>`
+    + `<span class="rest"><b>${esc(archiveLabel())}</b> ${pl(rows.length, "pairing")} had played `
+    + `<b>exactly once</b>${present() ? "" : ` by ${S.year}`}${esc(scopeNote())}`
+    + `${oldest ? ` — the oldest still-unrepeated fixture was in <b>${oldest}</b>` : ""}.</span>`;
 }
 
 function headlineMisses(headline) {
@@ -1638,7 +1760,11 @@ function headlineMisses(headline) {
   if (first) {
     headline.innerHTML = `<span class="big">${esc(first.textContent)}</span>`
       + `<span class="rest">opponents in common — and still no meeting between them. `
-      + `The ${esc(genderWord())} fixtures that keep not happening.</span>`;
+      + `The ${esc(archiveLabel())} fixtures that keep not happening`
+      + `${esc(asOfNote())}${esc(scopeNote())}.</span>`;
+  } else {
+    headline.innerHTML = `<span class="big">—</span>`
+      + `<span class="rest">No near misses in the current filter.</span>`;
   }
 }
 
@@ -1647,16 +1773,26 @@ function headlinePath(headline) {
   const path = (S.path.a != null && S.path.b != null)
     ? shortestPath(g, S.path.a, S.path.b) : null;
   const A = S.byId.get(S.path.a), B = S.byId.get(S.path.b);
-  if (!path || path.length < 2 || !A || !B) {
+  if (!A || !B || A.id === B.id) {
     headline.innerHTML = `<span class="big">—</span>`
       + `<span class="rest">Pick two teams to connect through matches actually played.</span>`;
+    return;
+  }
+  if (!path || path.length < 2) {
+    // Two teams are chosen; there is simply no chain between them under the current
+    // filter and year (a team that had not debuted yet has no edges at all).
+    headline.innerHTML = `<span class="big">∞</span>`
+      + `<span class="rest">no chain of matches connects <b>${esc(A.name)}</b> and `
+      + `<b>${esc(B.name)}</b> in the ${esc(archiveLabel())} record`
+      + `${esc(asOfNote())}${esc(scopeNote())}.</span>`;
     return;
   }
   const d = path.length - 1;
   headline.classList.add("allplayed");
   headline.innerHTML = `<span class="big">${d}</span>`
     + `<span class="rest">${pl(d, "degree")} of separation between <b>${esc(A.name)}</b> and `
-    + `<b>${esc(B.name)}</b> in the ${esc(genderWord())} record.</span>`;
+    + `<b>${esc(B.name)}</b> in the ${esc(archiveLabel())} record`
+    + `${esc(asOfNote())}${esc(scopeNote())}.</span>`;
 }
 
 /* ---------- views ---------- */
@@ -1681,6 +1817,19 @@ function applyView(view, { push = true, focus = true } = {}) {
     b.tabIndex = on ? 0 : -1;
   });
   document.body.dataset.view = view;
+  /* The fixtures feed deliberately lists both games in labelled groups, so the dataset
+     toggle has nothing to change there. It used to sit enabled and do nothing, which reads
+     as a broken control and teaches people to distrust the others. Disable it and say why —
+     the same treatment the never/upcoming toggles already get in combined mode. */
+  const genderMeaningless = view === "fixtures";
+  document.querySelectorAll("#gender button").forEach(b => {
+    b.disabled = genderMeaningless;
+    b.title = genderMeaningless
+      ? "The fixtures feed covers both games; switch to another view to pick one"
+      : "";
+  });
+  const genderNote = $("gender-note");
+  if (genderNote) genderNote.hidden = !genderMeaningless;
   // Timeline, legend and the grid-only toggles belong to the grid.
   const gridOnly = view === "grid";
   const timeline = $("timeline");
@@ -1776,6 +1925,7 @@ function setYear(y, { redraw = true } = {}) {
   setYearLabel();
   updateStats();
   if (redraw) draw();
+  if (S.view !== "grid" && !S.playing) refreshListView();   // too heavy to redo mid-playback
   writeUrl();
   // Exact per-year counts are only needed by tooltips; fetch them in the background so
   // the grid never waits on a download to move.
@@ -1784,9 +1934,11 @@ function setYear(y, { redraw = true } = {}) {
 
 let _playRaf = null, _playLast = 0;
 function stopPlay() {
+  const wasPlaying = S.playing;
   S.playing = false;
   if (_playRaf) cancelAnimationFrame(_playRaf);
   _playRaf = null;
+  if (wasPlaying && S.view !== "grid") refreshListView();
   const btn = $("year-play");
   if (btn) { btn.innerHTML = "&#9654;"; btn.setAttribute("aria-label", "Play the timeline"); }
 }
@@ -1855,7 +2007,6 @@ function setGender(gender) {
     const el = $(id);
     if (el) el.disabled = isCombined();
   }
-  _graphCache = null;
   buildTeamList();           // refresh the rank shown per gender
   updateUpcomingCount();
   updateLegend();
@@ -1888,7 +2039,6 @@ function buildControls() {
     const cb = e.target.closest("input"); if (!cb) return;
     if (cb.checked) S.showConfeds.add(cb.dataset.confed);
     else S.showConfeds.delete(cb.dataset.confed);
-    _graphCache = null;
     recompute(true);
   });
   $("confed-all").onclick = () => toggleConfeds(true);
@@ -1913,7 +2063,6 @@ function buildControls() {
   $("opt-defunct").checked = S.includeDefunct;
   $("opt-defunct").onchange = e => {
     S.includeDefunct = e.target.checked;
-    _graphCache = null;
     buildTeamList();
     recompute(true);
   };
@@ -1987,7 +2136,6 @@ function buildControls() {
 function toggleConfeds(on) {
   S.showConfeds = on ? new Set(S.confedOrder) : new Set();
   document.querySelectorAll("#confed-list input").forEach(i => { i.checked = on; });
-  _graphCache = null;
   recompute(true);
 }
 

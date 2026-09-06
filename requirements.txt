@@ -1,2 +1,9 @@
 # build.py uses only the Python standard library (csv, json, urllib, pathlib, datetime).
-# No third-party packages are required. Python 3.9+ recommended.
+# Python 3.9+ recommended.
+#
+# The single optional dependency is Pillow, used only by render_hero.py to draw
+# docs/assets/{hero,og,apple-touch-icon}.png. The daily refresh workflow installs it
+# so the share card's headline number stays in step with the data.
+#
+#   pip install -r requirements.txt   # only needed to regenerate the images
+pillow>=10

@@ -30,10 +30,15 @@ have simply never met.
 The grid answers "have these two ever played?". Four list views answer the questions it can
 only hint at — each is a tab above the grid, and each is linkable.
 
+All five obey the same controls: the confederation filter, the ticked teams, the dataset
+toggle and the timeline scrubber narrow every view, not just the grid. Filter to CONMEBOL and
+scrub to 1950 and *One-offs* answers "which South American pairs had met exactly once by 1950".
+Each view names the archive and filter behind the number it is printing.
+
 | View | What it shows |
 | --- | --- |
 | **Grid** | The 211×211 matrix itself. |
-| **Fixtures** | Every pairing that has **never met** and has a date on the calendar, with a countdown. The default view on phones, and the same list the [RSS/JSON feed](#syndication) carries. |
+| **Fixtures** | Every pairing that has **never met** and has a date on the calendar, with a countdown. The default view on phones. Unfiltered, it is the same list the [RSS/JSON feed](#syndication) carries; it covers both games at once, so the dataset toggle is disabled here rather than sitting there doing nothing. |
 | **One-offs** | The ~1,500 men's pairings that have played **exactly once**, oldest first — the top of that list is the longest-standing unrepeated fixture in international football. |
 | **Near misses** | Pairs that have never met, ranked by how many opponents they *already* have in common. Nothing here is scheduled: it is the list of fixtures that keep not happening. Russia–Bosnia share 73 opponents and have never played; so do Canada–Sweden, Japan–Morocco, South Korea–Estonia. |
 | **Connect** | Degrees of separation. The shortest chain of matches actually played between any two teams — Tonga reaches Brazil in two hops. |
@@ -154,7 +159,9 @@ It downloads the sources into `data/raw/` (gitignored), then writes the artifact
 
 Raster images (README hero, share card, touch icon) come from `python render_hero.py`, which
 reads the confederation palette and the meetings ramp straight out of `docs/style.css` so the
-pictures cannot drift from the site.
+pictures cannot drift from the site. The share card quotes a live figure, so the daily refresh
+regenerates and commits it alongside the data — otherwise a pasted link would keep advertising
+a never-played count from whenever the images were last built by hand.
 
 Then serve the static site from `docs/`:
 
