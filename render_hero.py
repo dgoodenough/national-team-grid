@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Render the project's raster images from the built data.
 
-  docs/assets/hero.png            the men's grid, for the README
+  docs/assets/hero.png            the unfolded sheet, for the README
   docs/assets/og.png              1200x630 share card (og:image / twitter:image)
   docs/assets/apple-touch-icon.png  180x180 home-screen icon
 
@@ -88,11 +88,38 @@ def ramp(t: float) -> tuple[int, int, int]:
     return RAMP[-1][1]
 
 
-def load_grid(gender: str = "men"):
-    members = json.loads((DOCS / "data/members.json").read_text(encoding="utf-8"))["members"]
-    matrix = json.loads((DOCS / f"data/matrix_{gender}.json").read_text(encoding="utf-8"))
-    counts = {(p[0], p[1]): p[2] for p in matrix["pairs"]}
-    return members, matrix, counts
+def load_sheet():
+    """The members in the order the app puts them in, and both archives' meeting counts.
+
+    members.json is written in men's-rank order, but the sheet carries both games, and one
+    sheet cannot be sorted by a table it only half uses: the app orders a team by its better
+    rank of the two. Re-sort here, or the picture stops matching the site.
+
+    Both halves are read against the busiest fixture in either archive, exactly as the app
+    does, so the women's half comes out genuinely paler rather than being flattered by a
+    scale of its own."""
+    data = json.loads((DOCS / "data/members.json").read_text(encoding="utf-8"))
+    confed_order = data["confederation_order"]
+
+    def rank(m):
+        rs = [r for r in (m["mens_rank"], m["womens_rank"]) if r is not None]
+        return min(rs) if rs else 10 ** 9
+
+    members = sorted(data["members"],
+                     key=lambda m: (confed_order.index(m["confed"]), rank(m), m["name"]))
+    counts, played, max_count = {}, {}, 1
+    for gender in ("men", "women"):
+        matrix = json.loads((DOCS / f"data/matrix_{gender}.json").read_text(encoding="utf-8"))
+        counts[gender] = {(p[0], p[1]): p[2] for p in matrix["pairs"]}
+        played[gender] = len(matrix["pairs"])
+        max_count = max(max_count, matrix["max_count"])
+    return members, counts, played, max_count
+
+
+def watermark_ink() -> tuple[int, int, int]:
+    """The half-labels, matching the canvas: --ink at 62% over the page ground."""
+    c0, c1 = hexrgb(CHROME), hexrgb(VARS["--ink"])
+    return tuple(round(a + (b - a) * 0.62) for a, b in zip(c0, c1))
 
 
 def played_grey(t: float) -> tuple[int, int, int]:
@@ -103,32 +130,53 @@ def played_grey(t: float) -> tuple[int, int, int]:
     return tuple(round(a + (b - a) * t) for a, b in zip(c0, c1))
 
 
-def draw_grid(d: ImageDraw.ImageDraw, members, matrix, counts, ox: int, oy: int,
-              cell: int, band: int | None = None, never: bool = False) -> int:
-    """Paint the matrix at (ox, oy). Returns its pixel size.
+def draw_grid(d: ImageDraw.ImageDraw, members, counts, max_count, ox: int, oy: int,
+              cell: int, band: int | None = None, never: bool = False,
+              label: bool = False) -> int:
+    """Paint the unfolded sheet at (ox, oy). Returns its pixel size.
 
-    never=True renders the landing view: the pairings that have not happened flood red and
+    Every pairing appears twice in a symmetric matrix, so half the grid was only ever a
+    mirror: the men's record goes above the diagonal and the women's below it, which is
+    what the site shows on the view it opens on.
+
+    never=True renders that landing view: the pairings that have not happened flood red and
     the ones that have fade to grey, so the picture is of the absence rather than the
-    record. The site opens this way, so the hero and the share card have to as well."""
-    max_log = math.log1p(matrix["max_count"])
-    order = [m["id"] for m in members]              # members.json is pre-sorted confed+rank
+    record. label=True adds the crease's two watermarks, which only fit when the whole
+    sheet is in frame."""
+    max_log = math.log1p(max_count)
+    order = [m["id"] for m in members]
     confed = {m["id"]: m["confed"] for m in members}
     n = len(order)
+    size = n * cell
 
     ground = hexrgb(VARS["--never-hi"]) if never else SHEET
-    d.rectangle([ox, oy, ox + n * cell, oy + n * cell], fill=ground, outline=GRID_STRONG)
+    d.rectangle([ox, oy, ox + size, oy + size], fill=ground, outline=GRID_STRONG)
     for r, a in enumerate(order):
         for c, b in enumerate(order):
             if a == b:
                 col = DIAG
             else:
-                cnt = counts.get((min(a, b), max(a, b)), 0)
+                gender = "men" if c > r else "women"
+                cnt = counts[gender].get((min(a, b), max(a, b)), 0)
                 if not cnt:
                     continue                        # never-played = the ground, already painted
                 col = played_grey(math.log1p(cnt) / max_log) if never \
                     else ramp(math.log1p(cnt) / max_log)
             x, y = ox + c * cell, oy + r * cell
             d.rectangle([x, y, x + cell - 1, y + cell - 1], fill=col)
+
+    # The crease. Without a rule down it the two archives read as one noisy square.
+    d.line([(ox, oy), (ox + size, oy + size)],
+           fill=GRID_STRONG, width=max(1, min(3, round(cell * 0.3))))
+    if label:
+        pt = max(12, min(58, size // 15))
+        font = load_font(pt)
+        for text, fx, fy in (("MEN'S", 0.70, 0.28), ("WOMEN'S", 0.30, 0.72)):
+            box = d.textbbox((0, 0), text, font=font)
+            d.text((ox + size * fx - (box[2] - box[0]) / 2 - box[0],
+                    oy + size * fy - (box[3] - box[1]) / 2 - box[1]),
+                   text, font=font, fill=watermark_ink(),
+                   stroke_width=max(2, pt // 8), stroke_fill=hexrgb(CHROME))
 
     if band:                                        # confederation strips (top + left)
         font = load_font(max(9, band - 3))
@@ -153,6 +201,25 @@ def draw_grid(d: ImageDraw.ImageDraw, members, matrix, counts, ox: int, oy: int,
     return n * cell
 
 
+def wrap(d: ImageDraw.ImageDraw, text: str, font, width: float) -> list[str]:
+    """Greedy-wrap to a pixel width.
+
+    The share card's text column is painted before the copy, so a line that outruns the
+    column is not clipped — it lands on the grid. Measuring beats counting characters."""
+    lines: list[str] = []
+    line = ""
+    for word in text.split():
+        trial = f"{line} {word}".strip()
+        if line and d.textlength(trial, font=font) > width:
+            lines.append(line)
+            line = word
+        else:
+            line = trial
+    if line:
+        lines.append(line)
+    return lines
+
+
 def draw_key(d: ImageDraw.ImageDraw, x: int, y: int, cell: int, order) -> None:
     """One line under the grid saying what the two colours and the strips mean.
 
@@ -172,12 +239,13 @@ def draw_key(d: ImageDraw.ImageDraw, x: int, y: int, cell: int, order) -> None:
 
 
 def render_hero() -> Path:
-    members, matrix, counts = load_grid("men")
+    members, counts, _played, max_count = load_sheet()
     KEY = 34                                        # strip under the grid for the key
     span = MARGIN + len(members) * CELL + 12
     img = Image.new("RGB", (span, span + KEY), CHROME)
     d = ImageDraw.Draw(img)
-    draw_grid(d, members, matrix, counts, MARGIN, MARGIN, CELL, BAND, never=True)
+    draw_grid(d, members, counts, max_count, MARGIN, MARGIN, CELL, BAND,
+              never=True, label=True)
     seen = list(dict.fromkeys(m["confed"] for m in members))
     draw_key(d, MARGIN, span + 4, CELL, seen)
     out = DOCS / "assets/hero.png"
@@ -192,11 +260,9 @@ def render_og() -> Path:
     This is what a paste of the URL renders as in Slack, iMessage, Bluesky and the rest —
     the single most-seen view of the project, and until now it was a blank rectangle."""
     W, H = 1200, 630
-    members, matrix, counts = load_grid("men")
+    members, counts, played, max_count = load_sheet()
     n = len(members)
     possible = n * (n - 1) // 2
-    never = possible - len(matrix["pairs"])
-    pct = 100 * len(matrix["pairs"]) / possible
 
     img = Image.new("RGB", (W, H), CHROME)
     d = ImageDraw.Draw(img)
@@ -206,7 +272,9 @@ def render_og() -> Path:
     PANEL = 596                                     # text column width
     cell = 4
     grid_px = n * cell
-    draw_grid(d, members, matrix, counts, PANEL + 24, (H - grid_px) // 2, cell, never=True)
+    # No watermarks here: the card shows a fragment, and one of the two would fall off it.
+    # The crease still runs through the fragment, and the text column says what it divides.
+    draw_grid(d, members, counts, max_count, PANEL + 24, (H - grid_px) // 2, cell, never=True)
 
     # Text column painted over the grid, so a long line can never collide with it.
     d.rectangle([0, 0, PANEL, H], fill=CHROME)
@@ -214,20 +282,21 @@ def render_og() -> Path:
     x, y = 72, 132
     # Green, because the numeral counts what has happened. It is the same green the grid
     # uses for a played pairing, and it holds up against near-black at thumbnail size.
-    d.text((x, y), f"{len(matrix['pairs']):,}", font=load_font(116),
+    column = PANEL - x - 24
+    d.text((x, y), f"{played['men']:,}", font=load_font(116),
            fill=hexrgb(VARS["--ramp-100"]))
     y += 132
-    for line, font, fill in (
-        ("international fixtures", load_font(38), (231, 234, 240)),
-        ("have been played", load_font(38), (231, 234, 240)),
-    ):
-        d.text((x, y), line, font=font, fill=fill)
+    head = load_font(38)
+    for line in wrap(d, f"men's fixtures played, {played['women']:,} women's", head, column):
+        d.text((x, y), line, font=head, fill=(231, 234, 240))
         y += 48
     y += 18
-    d.text((x, y), f"{pct:.0f}% of the {possible:,} possible pairings",
-           font=load_font(23, bold=False), fill=(154, 163, 178))
-    d.text((x, y + 32), f"between FIFA's {n} members. The rest is the picture.",
-           font=load_font(23, bold=False), fill=(154, 163, 178))
+    body = load_font(23, bold=False)
+    for line in wrap(d, f"of the {possible:,} possible pairings between FIFA's {n} members "
+                        "— men's above the diagonal, women's below. The rest is the picture.",
+                     body, column):
+        d.text((x, y), line, font=body, fill=(154, 163, 178))
+        y += 32
 
     d.text((x, H - 88), "FIFAGAMI",
            font=load_font(21), fill=hexrgb(VARS["--ramp-100"]))
@@ -237,7 +306,8 @@ def render_og() -> Path:
 
     out = DOCS / "assets/og.png"
     img.save(out)
-    print(f"wrote {out} ({img.width}x{img.height}, {len(matrix['pairs']):,} played)")
+    print(f"wrote {out} ({img.width}x{img.height}, "
+          f"{played['men']:,} men's / {played['women']:,} women's)")
     return out
 
 

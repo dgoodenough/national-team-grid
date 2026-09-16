@@ -4,22 +4,22 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <title>FIFAGami — every international football fixture</title>
-<meta name="description" content="A Scorigami-style grid of every international football fixture. Every FIFA nation is a row and a column, and 6,520 of the 22,155 possible pairings between the 211 members have been played." />
+<meta name="description" content="A Scorigami-style grid of every international football fixture. Every FIFA nation is a row and a column, with the men's game above the diagonal and the women's below it. Of the 22,155 possible pairings between the 211 members, 6,520 have been played by men and 2,822 by women." />
 <link rel="canonical" href="https://dgoodenough.github.io/fifagami/" />
 
 <!-- Share card. Absolute URLs: crawlers do not resolve relative ones. -->
 <meta property="og:type" content="website" />
 <meta property="og:site_name" content="FIFAGami" />
 <meta property="og:title" content="FIFAGami — every international football fixture" />
-<meta property="og:description" content="Every FIFA nation is a row and a column. 6,520 of the 22,155 possible fixtures have been played." />
+<meta property="og:description" content="Every FIFA nation is a row and a column, the men's game above the diagonal and the women's below it: 6,520 fixtures played against 2,822." />
 <meta property="og:url" content="https://dgoodenough.github.io/fifagami/" />
 <meta property="og:image" content="https://dgoodenough.github.io/fifagami/assets/og.png" />
 <meta property="og:image:width" content="1200" />
 <meta property="og:image:height" content="630" />
-<meta property="og:image:alt" content="A 211 by 211 grid of international football fixtures. Red marks a pairing the two teams have never played, grey one they have, and most of the grid is red. The headline reads 6,520 international fixtures have been played." />
+<meta property="og:image:alt" content="A 211 by 211 grid of international football fixtures, split down the diagonal: the men's record above it, the women's below. Red marks a pairing the two teams have never played and grey one they have. Most of the grid is red, and far more of the women's half than the men's." />
 <meta name="twitter:card" content="summary_large_image" />
 <meta name="twitter:title" content="FIFAGami — every international football fixture" />
-<meta name="twitter:description" content="Every FIFA nation is a row and a column. 6,520 of the 22,155 possible fixtures have been played." />
+<meta name="twitter:description" content="Every FIFA nation is a row and a column, the men's game above the diagonal and the women's below it: 6,520 fixtures played against 2,822." />
 <meta name="twitter:image" content="https://dgoodenough.github.io/fifagami/assets/og.png" />
 
 <link rel="icon" type="image/svg+xml" href="assets/favicon.svg" />
@@ -44,15 +44,15 @@
     </header></div>
 
     <div id="panel-body">
-    <section class="ctl">
-      <h2 class="sr-only">Dataset</h2>
-      <div class="seg" id="gender" role="tablist" aria-label="Dataset">
-        <button type="button" role="tab" id="tab-men" data-gender="men" class="active" aria-selected="true" tabindex="0">Men's</button>
-        <button type="button" role="tab" id="tab-women" data-gender="women" aria-selected="false" tabindex="-1">Women's</button>
-        <button type="button" role="tab" id="tab-both" data-gender="both" aria-selected="false" tabindex="-1">Both</button>
+    <section class="ctl" id="fold-ctl">
+      <h2 class="sr-only">Fold</h2>
+      <div class="seg" id="fold-tabs" role="tablist" aria-label="Fold">
+        <button type="button" role="tab" id="tab-open" data-fold="open" class="active" aria-selected="true" tabindex="0">Unfolded</button>
+        <button type="button" role="tab" id="tab-shut" data-fold="shut" aria-selected="false" tabindex="-1">Folded</button>
       </div>
-      <p class="hint" id="gender-note" hidden>The fixtures feed covers both games — switch to
-        another view to pick one.</p>
+      <p class="hint" id="fold-note">Unfolded, the men's game is above the diagonal and the
+        women's below. Fold it in half and the two land on each other — one triangle, every
+        pairing answered by both games at once.</p>
     </section>
 
     <section class="ctl">
@@ -123,7 +123,7 @@
         </div>
       </div>
       <div id="legend-split" hidden>
-        <div class="row"><span class="lbl">The split square</span></div>
+        <div class="row"><span class="lbl">The unfolded sheet</span></div>
         <div class="split-key">
           <svg viewBox="0 0 44 44" width="44" height="44" aria-hidden="true">
             <rect x="0" y="0" width="44" height="44" class="sk-sheet" />
@@ -136,6 +136,17 @@
             the women's — the same two teams, the other archive. Both halves are drawn on
             the one scale above, so the paler half is really the emptier one.</p>
         </div>
+      </div>
+      <div id="legend-folded" hidden>
+        <div class="row"><span class="lbl">Have played each other in…</span></div>
+        <div class="legend-keys legend-folded-keys">
+          <span><i class="sw" id="sw-both"></i> both</span>
+          <span><i class="sw" id="sw-men"></i> men's only</span>
+          <span><i class="sw" id="sw-women"></i> women's only</span>
+          <span><i class="sw" id="sw-neither"></i> neither</span>
+        </div>
+        <p class="hint">The two halves laid on top of each other: each cell is one pairing,
+          answered by both archives at once.</p>
       </div>
     </section>
 
@@ -202,9 +213,9 @@
           <button type="button" id="zoom-fit" title="Fit grid to view">Fit</button>
           <button type="button" id="zoom-in" aria-label="Zoom in" title="Zoom in">+</button>
         </div>
-        <!-- The flaps of the fold: canvases of the grid in a dataset other than the one
-             on screen, hinged on the square's diagonal. Empty except mid-fold. -->
-        <div id="fold" hidden aria-hidden="true"></div>
+        <!-- The sheets of the fold: canvases of the grid in a state other than the one on
+             screen, hinged on the square's diagonal. Empty except mid-fold. -->
+        <div id="fold-stage" hidden aria-hidden="true"></div>
         <div id="teamfocus" hidden></div>
         <div id="tooltip" hidden aria-hidden="true"></div>
         <div id="peek" hidden></div>

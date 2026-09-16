@@ -237,7 +237,8 @@ class TestSiteAssets(unittest.TestCase):
         n = len(members)
         possible = n * (n - 1) // 2
         played = len(load("matrix_men.json")["pairs"])
-        for tag, text in build.social_copy(members, played, possible).items():
+        played_women = len(load("matrix_women.json")["pairs"])
+        for tag, text in build.social_copy(members, played, possible, played_women).items():
             self.assertTrue(text in html,
                             f"<meta {tag[0]}=\"{tag[1]}\"> is out of date; "
                             f"run python build.py --derive")

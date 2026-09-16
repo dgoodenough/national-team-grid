@@ -868,25 +868,29 @@ def write_facts() -> int:
 # The share card is regenerated from the data every refresh. The meta description sat next
 # to it quoting a count somebody typed in by hand, which goes wrong the moment two teams
 # play. These four tags are written from the archives instead.
-def social_copy(members: list[dict], played: int, possible: int) -> dict[tuple[str, str], str]:
+def social_copy(members: list[dict], played: int, possible: int,
+                played_women: int) -> dict[tuple[str, str], str]:
     n = len(members)
     return {
         ("name", "description"):
             f"A Scorigami-style grid of every international football fixture. Every FIFA "
-            f"nation is a row and a column, and {played:,} of the {possible:,} possible "
-            f"pairings between the {n} members have been played.",
+            f"nation is a row and a column, with the men's game above the diagonal and the "
+            f"women's below it. Of the {possible:,} possible pairings between the {n} "
+            f"members, {played:,} have been played by men and {played_women:,} by women.",
         ("property", "og:description"):
-            f"Every FIFA nation is a row and a column. {played:,} of the {possible:,} "
-            f"possible fixtures have been played.",
+            f"Every FIFA nation is a row and a column, the men's game above the diagonal "
+            f"and the women's below it: {played:,} fixtures played against {played_women:,}.",
         ("name", "twitter:description"):
-            f"Every FIFA nation is a row and a column. {played:,} of the {possible:,} "
-            f"possible fixtures have been played.",
-        # Alt text describes the picture, which is mostly the red. Accuracy for a screen
-        # reader beats matching the headline's framing.
+            f"Every FIFA nation is a row and a column, the men's game above the diagonal "
+            f"and the women's below it: {played:,} fixtures played against {played_women:,}.",
+        # Alt text describes the picture, which is mostly the red — and now unmistakably
+        # more of it below the diagonal than above. Accuracy for a screen reader beats
+        # matching the headline's framing.
         ("property", "og:image:alt"):
-            f"A {n} by {n} grid of international football fixtures. Red marks a pairing "
-            f"the two teams have never played, grey one they have, and most of the grid "
-            f"is red. The headline reads {played:,} international fixtures have been played.",
+            f"A {n} by {n} grid of international football fixtures, split down the "
+            f"diagonal: the men's record above it, the women's below. Red marks a pairing "
+            f"the two teams have never played and grey one they have. Most of the grid is "
+            f"red, and far more of the women's half than the men's.",
     }
 
 
@@ -898,9 +902,11 @@ def stamp_index_html() -> int:
     n = len(members)
     possible = n * (n - 1) // 2
     played = len(json.loads((OUT / "matrix_men.json").read_text(encoding="utf-8"))["pairs"])
+    played_women = len(
+        json.loads((OUT / "matrix_women.json").read_text(encoding="utf-8"))["pairs"])
 
     written = 0
-    for (attr, key), text in social_copy(members, played, possible).items():
+    for (attr, key), text in social_copy(members, played, possible, played_women).items():
         if '"' in text:
             raise SystemExit(f"social copy for {key} contains a quote; it goes in an attribute")
         pattern = rf'(<meta {attr}="{re.escape(key)}" content=")[^"]*(")'

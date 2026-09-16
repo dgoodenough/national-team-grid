@@ -212,8 +212,14 @@ body[data-never="1"] #sw-never { background: var(--never-hi); border-color: var(
 #sw-diag { background: var(--diag); }
 #sw-predebut { background: var(--predebut); border: 1px solid var(--grid); }
 #sw-nodata { background: var(--nodata); border: 1px solid var(--nodata-line); }
-#legend-split[hidden] { display: none; }
+#legend-split[hidden], #legend-folded[hidden] { display: none; }
 #legend-split { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--grid); }
+.legend-folded-keys { flex-wrap: wrap; gap: 8px 16px; }
+#legend-folded .hint { margin: 10px 0 0; line-height: 1.5; }
+#sw-both { background: var(--both); }
+#sw-men { background: var(--men-only); }
+#sw-women { background: var(--women-only); }
+#sw-neither { background: var(--never); border: 1px solid var(--grid-strong); }
 .split-key { display: flex; gap: 10px; align-items: flex-start; }
 .split-key svg { flex: none; border: 1px solid var(--grid-strong); border-radius: 2px; }
 .split-key .hint { margin: 0; line-height: 1.5; }
@@ -302,25 +308,23 @@ body[data-never="1"] #sw-never { background: var(--never-hi); border-color: var(
 #zoom-ctl button#zoom-fit { width: auto; padding: 0 12px; font-size: .82rem; }
 #zoom-ctl button:hover { border-color: var(--pos); color: var(--pos); }
 
-/* The fold. The flaps are canvases of the grid in another dataset, clipped to one triangle
+/* The fold. The sheets are canvases of the grid in another state, clipped to one triangle
    of the square and hinged on its diagonal, so they sit above the live canvas and below
-   every control. `leaving` is the frame the switch walked away from, held over the first
-   moments of the fold to cover the reordering of the rows underneath. */
-#fold[hidden] { display: none; }
-#fold {
+   every control. The flap's back face is the payload — it is what carries the women's
+   record across the crease onto the men's — so backface-visibility stays visible. */
+#fold-stage[hidden] { display: none; }
+#fold-stage {
   position: absolute; inset: 0; z-index: 5; pointer-events: none;
   /* Deep enough that the lift reads as depth and not as a lens: at this distance the far
      corner of a half-turned flap is magnified by under a fifth, so the cells stay where the
      eye left them. JS sets perspective-origin to the square's own centre. */
   overflow: hidden; perspective: 4000px;
 }
-#fold canvas {
+#fold-stage canvas {
   position: absolute; left: 0; top: 0; width: 100%; height: 100%;
-  /* A flap never goes past edge-on, so this only guards against a sub-pixel overshoot. */
-  backface-visibility: hidden; will-change: transform, opacity;
+  will-change: transform, opacity;
 }
-#fold canvas.leaving { backface-visibility: visible; }
-@media (prefers-reduced-motion: reduce) { #fold { display: none; } }
+@media (prefers-reduced-motion: reduce) { #fold-stage { display: none; } }
 
 #tooltip {
   position: absolute; pointer-events: none; z-index: 7;

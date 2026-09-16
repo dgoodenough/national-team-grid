@@ -8,10 +8,11 @@ and fewer than one in six of the women's. Every pairing is one cell of this grid
 
 **▶ Live: https://dgoodenough.github.io/fifagami/**
 
-![Every possible international fixture, played in grey and unplayed in red](docs/assets/hero.png)
+![Every possible international fixture, split down the diagonal: the men's record above it, the women's below, played in grey and unplayed in red](docs/assets/hero.png)
 
 Every current FIFA member is a row and a column. Each cell is a pairing. Red means those two
-national teams have never played each other, in 150 years of trying.
+national teams have never played each other, in 150 years of trying. The grid is creased down
+its diagonal: the men's record above it, the women's below.
 
 ## How to read it
 
@@ -24,37 +25,36 @@ meetings. Turn off *Never-played* and the grid colours by meetings instead, a gr
 a single match up to Argentina against Uruguay, the most-played fixture in the game,
 first contested in 1902.
 
-The diagonal is blacked out. A team cannot play itself. On *Both* it is also the fold: the
-same two teams appear once above it in the men's game and once below it in the women's.
+The diagonal is blacked out. A team cannot play itself. It is also the crease: the same two
+teams appear once above it in the men's game and once below it in the women's.
 
 ## Five views
 
-Every view obeys the same controls. The confederation filter, the ticked teams, the dataset
-toggle and the timeline scrubber narrow all five. Filter to CONMEBOL, scrub to 1950, open
-*One-offs*, and you have the South American pairs that had met exactly once by 1950.
+Every view obeys the same controls. The confederation filter, the ticked teams and the
+timeline scrubber narrow all five. Filter to CONMEBOL, scrub to 1950, open *One-offs*, and you
+have the South American pairs that had met exactly once by 1950. The fold belongs to the grid,
+which is the only view with a sheet to fold; the four lists read both archives either way.
 
 | View | What it shows |
 | --- | --- |
 | **Grid** | The 211×211 matrix. |
 | **Fixtures** | Pairings that have never met and have a date on the calendar, with a countdown. Also published as a [feed](#syndication). |
-| **One-offs** | The men's pairings played exactly once, oldest first. Egypt beat Lithuania 10–0 in 1924 and the two have not met since. |
+| **One-offs** | Pairings played exactly once across both archives, oldest first. Egypt beat Lithuania 10–0 in 1924 and the two have not met since. |
 | **Near misses** | Pairs that have never met, ranked by opponents they already share. Canada and Sweden have more than seventy in common and have never played. |
 | **Connect** | Tonga has played a dozen countries at most, and still reaches every other national team on earth within three matches. |
 
 ## What it does
 
 - **Zoom and pan** the full grid, on a mouse or a phone. Tap a cell to aim, tap again to open it.
-- **Men's, women's, or both — in one square.** Two separate archives with their own FIFA
-  rankings. Every pairing appears twice in a symmetric matrix, so half the grid was only ever
-  a mirror of the other half; *Both* spends that half on the second game instead. Above the
-  diagonal is the men's record, below it the women's, on one shared scale — so the paler half
-  is genuinely the emptier one. 4,023 pairings have been played by men and not women; 325 the
-  other way.
-- **Switching datasets is a fold.** Each game on its own is the same split square with the
-  mirrored half folded back down over the other archive, so the toggle hinges it on the
-  diagonal: up and out of the way for *Both*, down again for either game alone. Men's
-  straight to women's takes both flaps in turn and passes through the split on the way.
-  Honoured `prefers-reduced-motion` skips it.
+- **Both games on one sheet.** Every pairing appears twice in a symmetric matrix, so half the
+  grid was only ever a mirror of the other half. *Unfolded*, that half carries the second
+  archive instead: the men's record above the diagonal, the women's below it, on one shared
+  scale, so the paler half is genuinely the emptier one.
+- **Fold it in half and the two land on each other.** *Folded* creases the square along its
+  diagonal and brings the women's half down on the men's, pairing for pairing — one triangle,
+  in which every cell answers for both games at once: met in both, in the men's only, in the
+  women's only, or in neither. 4,023 pairings have been played by men and not women; 325 the
+  other way. The switch is the fold itself, animated; `prefers-reduced-motion` skips it.
 - **Click any cell** for every meeting between those two teams, with scores, tournaments and
   the head-to-head record.
 - **Timeline scrubber.** Drag through the years and watch the grid fill in. Press ▶ and it
@@ -130,8 +130,9 @@ It writes the artifacts the site loads:
 - `feed.json`, `feed.xml` — upcoming first meetings, as a subscribable feed
 
 `python render_hero.py` draws the README image, the share card and the touch icon. It reads the
-palette out of `docs/style.css`, so the pictures cannot drift from the site. The share card
-quotes a live figure, so the daily refresh regenerates it.
+palette out of `docs/style.css` and re-sorts the members the way the app does, so the pictures
+cannot drift from the site. The share card quotes live figures, so the daily refresh
+regenerates it.
 
 Then serve it:
 
@@ -165,10 +166,14 @@ A static site. Vanilla JavaScript and a canvas, no build step, no runtime depend
 on GitHub Pages from `docs/`. The 44,000-cell grid is drawn with view-culling for smooth
 zoom and pan, and Pointer Events give mouse and touch a single interaction path.
 
-The fold is three canvases: the split square on the live canvas, and one offscreen render of
-the grid per archive, each clipped to a triangle and hinged on the square's diagonal by a CSS
-`rotate3d(1, 1, 0)` about its top-left corner. A flap only ever travels to edge-on, so no
-frame of the animation is spent on a half the viewer cannot see.
+The fold is three sheets: the destination triangle on the live canvas, plus two offscreen
+renders of the same grid — the half that stays put and the half that moves. Each is clipped to
+a triangle, and the moving one is hinged on the square's diagonal by a CSS
+`rotate3d(1, 1, 0)` about its top-left corner. Because the matrix is symmetric, a half-turn
+lands every cell on the pairing it mirrors, which is what makes the fold mean something: the
+flap's back face carries the women's record onto the men's, cell for cell, and the two then
+resolve into the four-way key. The hypotenuse of each triangle is offset by one cell so the
+diagonal squares stay whole and the two halves register exactly.
 
 Two things keep it quick at 22,155 pairings. The never-played count is a prefix sum over each
 pair's first-meeting year, so a timeline drag reads it in constant time per frame instead of
